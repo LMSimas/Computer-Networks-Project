@@ -53,7 +53,7 @@ int main (int argc, char* argv[]){
 
     //MAQUINA DE ESTADOS 
 
-    printf("ndn> "); fflush(stdout); //prompt
+    printf("ndn> "); fflush(stdout); //prompt 
     state = notreg;
     while(state!=goingout)
     {
@@ -67,7 +67,11 @@ int main (int argc, char* argv[]){
         }//switch(state)
 
         counter = select(maxfd+1,&rfds,(fd_set*)NULL,(fd_set*)NULL,(struct timeval *)NULL);
-        if(counter<=0){printf("Error: Unexpected (select)\n");}exit(1);
+        if(counter<=0){
+            printf("Error: Unexpected (select)\n");
+            exit(1);
+        }
+
 
         for (; counter ; --counter) //corre tantas vezes quantas o retorno do select
             switch (state)
