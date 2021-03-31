@@ -19,9 +19,10 @@ int main (int argc, char* argv[]){
     
     enum {notreg, goingout, regwait, reg, notregwait} state;
     fd_set rfds;
-    int maxfd, counter;
+    int maxfd, counter, sockfd;
 
-    struct addrinfo hints,*res; //for udp server comms
+
+    struct addrinfo hints, *server_info; //for udp server comms
     int fd,errcode;             //for udp server comms
     ssize_t n;
     struct sockaddr server_addr;
@@ -65,7 +66,7 @@ int main (int argc, char* argv[]){
             case notregwait: FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
         }//switch(state)
 
-        counter=select(maxfd+1,&rfds,(fd_set*)NULL,(fd_set*)NULL,(struct timeval *)NULL);
+        counter = select(maxfd+1,&rfds,(fd_set*)NULL,(fd_set*)NULL,(struct timeval *)NULL);
         if(counter<=0){printf("Error: Unexpected (select)\n");}exit(1);
 
         for (; counter ; --counter) //corre tantas vezes quantas o retorno do select
@@ -91,7 +92,7 @@ int main (int argc, char* argv[]){
                                     //connect to it
                                     //register -- done
                                     sprintf(message, "REG %s %s %s", netid, argv[1], argv[2]);
-                                    n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, ,server_info->ai_addrlen); 
+                                    n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
                                     if(n==-1)
                                     {
                                         printf("Error: Unexpected sendto\n");
@@ -165,7 +166,7 @@ int main (int argc, char* argv[]){
                                 //muita coisa para fazer aqui
                                 //...
                                 sprintf(message, "UNREG %s %s %s", netid, argv[1], argv[2]);
-                                n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, ,server_info->ai_addrlen); 
+                                n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
                                 if(n==-1)
                                 {
                                     printf("Error: Unexpected sendto\n");
