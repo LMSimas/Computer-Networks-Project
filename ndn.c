@@ -9,21 +9,31 @@
 
 #define BUFFER_SIZE 1024
 
+typedef struct _node {
+    char netid[BUFFER_SIZE];
+    char nodeid[BUFFER_SIZE];
+    char nodeIP;
+    char nodeTCP;
+    int extern_nid;
+    char extern_contact[BUFFER_SIZE];
+    int backup_nid;
+    char backup_contact[BUFFER_SIZE];
+} node_s;
 
-
-
+int flag_list = 0;
+        
 
 int main (int argc, char* argv[]){
 
-    char buffer[BUFFER_SIZE], command[BUFFER_SIZE], netid[BUFFER_SIZE], nodeid[BUFFER_SIZE], message[BUFFER_SIZE];  //message para o registo de um novo no
+    char buffer[BUFFER_SIZE], command[BUFFER_SIZE], netid[BUFFER_SIZE], nodeid[BUFFER_SIZE], message[BUFFER_SIZE], message1[BUFFER_SIZE];  //message para o registo de um novo no
     
-    enum {notreg, goingout, regwait, reg, notregwait} state;
+    enum {notreg, goingout, regwait, reg, notregwait, listwait} state;
     fd_set rfds;
     int maxfd, counter, sockfd;
 
 
     struct addrinfo hints, *server_info; //for udp server comms
-    int fd,errcode;             //for udp server comms
+    int fd,errcode;                      //for udp server comms
     ssize_t n;
     struct sockaddr server_addr;
     socklen_t addrlen;
@@ -33,7 +43,9 @@ int main (int argc, char* argv[]){
         exit(1);//in order 2 exit the programm
 
     /*APPLICATION STARTS HERE*/
-
+    node_s node;
+    node.nodeIP = *argv[1];
+    node.nodeTCP = *argv[2];
 
     sockfd=socket(AF_INET,SOCK_DGRAM,0);//UDP socket 
     if(sockfd==-1)
@@ -53,7 +65,7 @@ int main (int argc, char* argv[]){
 
     //MAQUINA DE ESTADOS 
 
-    printf("ndn> "); fflush(stdout); //prompt 
+    printf("ndn> "); fflush(stdout); //prompt
     state = notreg;
     while(state!=goingout)
     {
@@ -64,18 +76,20 @@ int main (int argc, char* argv[]){
             case regwait:    FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
             case reg:        FD_SET(0, &rfds); maxfd=0; break;
             case notregwait: FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
+            case listwait:   FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
         }//switch(state)
 
         counter = select(maxfd+1,&rfds,(fd_set*)NULL,(fd_set*)NULL,(struct timeval *)NULL);
-        if(counter<=0){
+        if(counter<=0)
+        {
             printf("Error: Unexpected (select)\n");
             exit(1);
         }
 
-
         for (; counter ; --counter) //corre tantas vezes quantas o retorno do select
             switch (state)
             {
+
             case notreg:     //---------------------------------------------------------------------------
                 if(FD_ISSET(0,&rfds)) //stdin
                 {
@@ -87,26 +101,23 @@ int main (int argc, char* argv[]){
                             if(strcmp(command, "join")==0) 
                             {
                                 printf("Command: join \n");
-                                if(sscanf(buffer, "%*s%s%s", netid, nodeid)!=2)
+                                if(sscanf(buffer, "%*s%s%s", node.netid, node.nodeid)!=2)
                                     printf("Error: missing arguments\n");
                                 else
                                 {
-                                    //get nodes list
-                                    //select one node
-                                    //connect to it
-                                    //register -- done
-                                    sprintf(message, "REG %s %s %s", netid, argv[1], argv[2]);
-                                    n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
-                                    if(n==-1)
-                                    {
-                                        printf("Error: Unexpected sendto\n");
-                                        exit(1);
+                                    if(!flag_list){ 
+                                        //new
+                                        sprintf(message, "NODES %s", node.netid);
+                                        n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
+                                        if(n==-1)
+                                        {
+                                            printf("Error: Unexpected sendto\n");
+                                            exit(1);
+                                        }
+                                        state=listwait;
                                     }
-                                    state=regwait;
 
                                 }
-
-
                                 //operacoes necessarias
                             }
                             else if (strcmp(command, "leave")==0) printf("Makes no sense to leave before joining \n");
@@ -116,10 +127,27 @@ int main (int argc, char* argv[]){
                             else printf("Error: Unknown command. \n");
                         }//if command
 
-                    }
+                    }//fgets
 
                 if(state!=goingout)printf("ndn> "); fflush(stdout); //prompt
                 }//stdin
+                
+                else if (flag_list) {     //segunda vez que entra neste estado ja c a lista                          
+                    //select one node
+                    //connect to it
+                    //register -- done
+                    sprintf(message, "REG %s %s %s", netid, argv[1], argv[2]);
+                    n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
+                    if(n==-1)
+                    {
+                        printf("Error: Unexpected sendto\n");
+                        exit(1);
+                    }
+                    printf("entrou aqui");
+                    flag_list = 0;
+                    state=regwait;
+                }//else if flaglist
+
             break;//notreg
 
             case regwait:    //---------------------------------------------------------------------------
@@ -221,6 +249,53 @@ int main (int argc, char* argv[]){
                     if (strcmp(message, "OKUNREG")==0){printf("Unregistered.\nndn>"); fflush(stdout); state=notreg;} 
                 }//UDP socket
             break;//unregwait
+
+            case listwait:    //---------------------------------------------------------------------------
+                if(FD_ISSET(0,&rfds)) //stdin
+                {
+                    FD_CLR(0,&rfds);
+                    if (fgets(buffer, BUFFER_SIZE, stdin)!=NULL) 
+                    {
+                        if(sscanf(buffer, "%s", command)==1)
+                        {
+                            if(strcmp(command, "join")==0) printf("Join in progress... \n");
+                            else if (strcmp(command, "leave")==0) printf("Makes no sense to leave before joining \n");
+                            else if (strcmp(command, "exit")==0) {printf("Going out.\n\n"); state=goingout;}
+                            //resto dos comandos possiveis
+                            //...
+                            else printf("Error: Unknown command. \n");
+                        }//if commands
+                    }
+                    if(state!=goingout)printf("ndn> "); fflush(stdout); //prompt
+                }//stdin
+                else if (FD_ISSET(sockfd,&rfds)) 
+                {
+                    FD_CLR(sockfd,&rfds);
+                    n=recvfrom(sockfd, message, BUFFER_SIZE-1, 0, &server_addr, &addrlen); 
+                    if(n==-1)
+                    {
+                        printf("Error: Unexpected recvfrom\n");
+                        exit(1);
+                    }
+                    message[n]='\0';
+                    printf("mensagem -> %s\n", message);
+
+                    if (sscanf(message, "%s", message1)==1)
+                    { 
+                        //printf("mensagem comeca com -> %s\n", message1);
+                        if (strcmp(message1, "NODESLIST")==0)
+                        {
+                            printf("List Received.\nndn>"); 
+                            fflush(stdout);
+                        } //lista recebida
+                        else printf("Error: Return message descriptor . \n");
+                    }
+                    else printf("Error: Return message . \n");
+
+                    flag_list = 1;
+                    state=notreg;
+                }//UDP socket
+            break;//listwait
 
             }//switch(state)
         
