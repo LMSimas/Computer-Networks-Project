@@ -20,7 +20,7 @@ typedef struct _node {
     char backup_contact[BUFFER_SIZE];
 } node_s;
 
-int flag_list = 0;
+
         
 
 int main (int argc, char* argv[]){
@@ -30,6 +30,7 @@ int main (int argc, char* argv[]){
     enum {notreg, goingout, regwait, reg, notregwait, listwait} state;
     fd_set rfds;
     int maxfd, counter, sockfd;
+    int flag_list = 0;
 
 
     struct addrinfo hints, *server_info; //for udp server comms
@@ -271,7 +272,7 @@ int main (int argc, char* argv[]){
                 else if (FD_ISSET(sockfd,&rfds)) 
                 {
                     FD_CLR(sockfd,&rfds);
-                    n=recvfrom(sockfd, message, BUFFER_SIZE-1, 0, &server_addr, &addrlen); 
+                    n=recvfrom(sockfd, message, BUFFER_SIZE-1, 0, &server_addr, &addrlen); //w8ting for NODESLIST
                     if(n==-1)
                     {
                         printf("Error: Unexpected recvfrom\n");
@@ -285,6 +286,38 @@ int main (int argc, char* argv[]){
                         //printf("mensagem comeca com -> %s\n", message1);
                         if (strcmp(message1, "NODESLIST")==0)
                         {
+                            //NOTREGWAIT STATUS?
+                            //Simas
+
+                            /*****Pseudo Code*****/
+                            /*
+                            while(message1 is NOT in the end){
+                                linked_note = catch_a_node from string_message()
+                                if(thisNode is available)
+                                    join(--via tcp--){
+                                        sscanf(message, messageIP (...), messageTCP)
+                                        REG net IP TCP
+                                        n=recvfrom(sockfd, message, BUFFER_SIZE-1, 0, &server_addr, &addrlen); //w8ting for OKREG
+                                        if(n==-1){
+                                            printf("Error: Unexpected recvfrom\n");
+                                            exit(1);
+                                        }
+                                        message[n]='\0';
+                                        printf("mensagem -> %s\n", message);
+
+                                        if (strcmp(message, "OKREG")==0)
+                                            state=reg
+
+                                    }
+
+                                else()
+                                    keep_looking for another_node of the list
+                            }
+
+                            if(state == notreg){//then no node is available OR net is empty
+                                printf("No nodes available OR net is empty\n\n");
+                            }*/
+
                             printf("List Received.\nndn>"); 
                             fflush(stdout);
                         } //lista recebida
@@ -292,7 +325,7 @@ int main (int argc, char* argv[]){
                     }
                     else printf("Error: Return message . \n");
 
-                    flag_list = 1;
+                    flag_list = 1;//simao -- mesmo preciso?
                     state=notreg;
                 }//UDP socket
             break;//listwait
