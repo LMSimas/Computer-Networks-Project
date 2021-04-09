@@ -20,7 +20,7 @@ typedef struct _node {
     char backup_contact[BUFFER_SIZE];
 } node_s;
 
-
+int flag_list = 0;
         
 
 int main (int argc, char* argv[]){
@@ -30,7 +30,6 @@ int main (int argc, char* argv[]){
     enum {notreg, goingout, regwait, reg, notregwait, listwait} state;
     fd_set rfds;
     int maxfd, counter, sockfd;
-    int flag_list = 0;
 
 
     struct addrinfo hints, *server_info; //for udp server comms
@@ -80,7 +79,15 @@ int main (int argc, char* argv[]){
             case listwait:   FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
         }//switch(state)
 
-        counter = select(maxfd+1,&rfds,(fd_set*)NULL,(fd_set*)NULL,(struct timeval *)NULL);
+        if (state == notreg && flag_list) //tem que percorrer o notreg (pelo menos) uma vez sem qq input de descritores quando ja tem a lsita de noz
+        {
+            counter = 1;
+        }
+        else 
+        {
+            counter = select(maxfd+1,&rfds,(fd_set*)NULL,(fd_set*)NULL,(struct timeval *)NULL);
+        }
+
         if(counter<=0)
         {
             printf("Error: Unexpected (select)\n");
@@ -92,11 +99,15 @@ int main (int argc, char* argv[]){
             {
 
             case notreg:     //---------------------------------------------------------------------------
-                if(FD_ISSET(0,&rfds)) //stdin
+                printf("ENTRA NO NOTREG \n");
+                if(FD_ISSET(0,&rfds) && !flag_list) //stdin
                 {
+                    printf("ENTRA NO ISSET \n");
+                    //printf("entrou no ISSET\n"); 
                     FD_CLR(0,&rfds);
                     if (fgets(buffer, BUFFER_SIZE, stdin)!=NULL) 
                     {
+                        //printf("entrou no fgets\n"); 
                         if(sscanf(buffer, "%s", command)==1)
                         {
                             if(strcmp(command, "join")==0) 
@@ -104,39 +115,35 @@ int main (int argc, char* argv[]){
                                 printf("Command: join \n");
                                 if(sscanf(buffer, "%*s%s%s", node.netid, node.nodeid)!=2)
                                     printf("Error: missing arguments\n");
-                                else
-                                {
-                                    if(!flag_list){ 
-                                        //new
-                                        sprintf(message, "NODES %s", node.netid);
-                                        n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
-                                        if(n==-1)
-                                        {
-                                            printf("Error: Unexpected sendto\n");
-                                            exit(1);
-                                        }
-                                        state=listwait;
+                                else if(!flag_list){ 
+                                    //new
+                                    sprintf(message, "NODES %s", node.netid);
+                                    n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
+                                    if(n==-1)
+                                    {
+                                        printf("Error: Unexpected sendto\n");
+                                        exit(1);
                                     }
-
+                                    state=listwait;
                                 }
-                                //operacoes necessarias
+
+                                //resto das operacoes necessarias
                             }
                             else if (strcmp(command, "leave")==0) printf("Makes no sense to leave before joining \n");
                             else if (strcmp(command, "exit")==0) {printf("Going out.\n\n"); state=goingout;}
                             //resto dos comandos possiveis
                             //...
                             else printf("Error: Unknown command. \n");
-                        }//if command
-
+                        }//if command                    
                     }//fgets
 
-                if(state!=goingout)printf("ndn> "); fflush(stdout); //prompt
+                    if(state!=goingout && flag_list==0)printf("ndn> "); fflush(stdout); //prompt
                 }//stdin
-                
-                else if (flag_list) {     //segunda vez que entra neste estado ja c a lista                          
+                if (flag_list) {     //segunda vez que entra neste estado ja c a lista                          
                     //select one node
                     //connect to it
                     //register -- done
+                    printf("FLAG = 1\n");
                     sprintf(message, "REG %s %s %s", netid, argv[1], argv[2]);
                     n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
                     if(n==-1)
@@ -144,9 +151,8 @@ int main (int argc, char* argv[]){
                         printf("Error: Unexpected sendto\n");
                         exit(1);
                     }
-                    printf("entrou aqui");
                     flag_list = 0;
-                    state=regwait;
+                    state=regwait;                  
                 }//else if flaglist
 
             break;//notreg
@@ -272,7 +278,7 @@ int main (int argc, char* argv[]){
                 else if (FD_ISSET(sockfd,&rfds)) 
                 {
                     FD_CLR(sockfd,&rfds);
-                    n=recvfrom(sockfd, message, BUFFER_SIZE-1, 0, &server_addr, &addrlen); //w8ting for NODESLIST
+                    n=recvfrom(sockfd, message, BUFFER_SIZE-1, 0, &server_addr, &addrlen); 
                     if(n==-1)
                     {
                         printf("Error: Unexpected recvfrom\n");
@@ -286,38 +292,6 @@ int main (int argc, char* argv[]){
                         //printf("mensagem comeca com -> %s\n", message1);
                         if (strcmp(message1, "NODESLIST")==0)
                         {
-                            //NOTREGWAIT STATUS?
-                            //Simas
-
-                            /*****Pseudo Code*****/
-                            /*
-                            while(message1 is NOT in the end){
-                                linked_note = catch_a_node from string_message()
-                                if(thisNode is available)
-                                    join(--via tcp--){
-                                        sscanf(message, messageIP (...), messageTCP)
-                                        REG net IP TCP
-                                        n=recvfrom(sockfd, message, BUFFER_SIZE-1, 0, &server_addr, &addrlen); //w8ting for OKREG
-                                        if(n==-1){
-                                            printf("Error: Unexpected recvfrom\n");
-                                            exit(1);
-                                        }
-                                        message[n]='\0';
-                                        printf("mensagem -> %s\n", message);
-
-                                        if (strcmp(message, "OKREG")==0)
-                                            state=reg
-
-                                    }
-
-                                else()
-                                    keep_looking for another_node of the list
-                            }
-
-                            if(state == notreg){//then no node is available OR net is empty
-                                printf("No nodes available OR net is empty\n\n");
-                            }*/
-
                             printf("List Received.\nndn>"); 
                             fflush(stdout);
                         } //lista recebida
@@ -325,7 +299,8 @@ int main (int argc, char* argv[]){
                     }
                     else printf("Error: Return message . \n");
 
-                    flag_list = 1;//simao -- mesmo preciso?
+                    flag_list = 1;
+                    printf("VAI PARA O NOTREG \n");
                     state=notreg;
                 }//UDP socket
             break;//listwait
