@@ -99,11 +99,11 @@ int main (int argc, char* argv[]){
             {
 
             case notreg:     //---------------------------------------------------------------------------
-                printf("ENTRA NO NOTREG \n");
+                //printf("ENTRA NO NOTREG \n");
                 if(FD_ISSET(0,&rfds) && !flag_list) //stdin
                 {
-                    printf("ENTRA NO ISSET \n");
-                    //printf("entrou no ISSET\n"); 
+                    //printf("ENTRA NO ISSET \n");
+
                     FD_CLR(0,&rfds);
                     if (fgets(buffer, BUFFER_SIZE, stdin)!=NULL) 
                     {
@@ -139,12 +139,14 @@ int main (int argc, char* argv[]){
 
                     if(state!=goingout && flag_list==0)printf("ndn> "); fflush(stdout); //prompt
                 }//stdin
-                if (flag_list) {     //segunda vez que entra neste estado ja c a lista                          
+                if (flag_list) {     //segunda vez que entra neste estado ja c a lista
+
                     //select one node
+
                     //connect to it
                     //register -- done
-                    printf("FLAG = 1\n");
-                    sprintf(message, "REG %s %s %s", netid, argv[1], argv[2]);
+                    
+                    sprintf(message, "REG %s %s %s", node.netid, argv[1], argv[2]);
                     n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
                     if(n==-1)
                     {
@@ -204,7 +206,7 @@ int main (int argc, char* argv[]){
                             {
                                 //muita coisa para fazer aqui
                                 //...
-                                sprintf(message, "UNREG %s %s %s", netid, argv[1], argv[2]);
+                                sprintf(message, "UNREG %s %s %s", node.netid, argv[1], argv[2]);
                                 n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
                                 if(n==-1)
                                 {
@@ -300,7 +302,7 @@ int main (int argc, char* argv[]){
                     else printf("Error: Return message . \n");
 
                     flag_list = 1;
-                    printf("VAI PARA O NOTREG \n");
+                    //printf("VAI PARA O NOTREG \n");
                     state=notreg;
                 }//UDP socket
             break;//listwait
