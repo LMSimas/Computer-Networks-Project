@@ -10,26 +10,31 @@
 
 
 typedef struct _node {
-    char netid[BUFFER_SIZE];
-    char nodeid[BUFFER_SIZE];
-    char nodeIP;
-    char nodeTCP;
-    int extern_nid;
-    char extern_contact[BUFFER_SIZE];
-    int backup_nid;
-    char backup_contact[BUFFER_SIZE];
+    char netid [BUFFER_SIZE];
+    
+    char nodeid [BUFFER_SIZE];
+    char nodeIP[BUFFER_SIZE];
+    char nodeTCP[BUFFER_SIZE];
+
+    char extern_id [BUFFER_SIZE];
+    char extern_IP [BUFFER_SIZE];
+    char extern_PORT [BUFFER_SIZE];
+
+    char backup_id [BUFFER_SIZE];
+    char backup_IP [BUFFER_SIZE];
+    char backup_PORT [BUFFER_SIZE];
 } node_s;
 
+node_s node;
 int flag_list = 0;
-        
+char TCP_IParray[5][BUFFER_SIZE];//5 for now
+char TCP_PORTarray[5][BUFFER_SIZE];
+int TCP_NodesCounter = 0;
 
 int main (int argc, char* argv[]){
 
     char buffer[BUFFER_SIZE], command[BUFFER_SIZE], netid[BUFFER_SIZE], nodeid[BUFFER_SIZE], message[BUFFER_SIZE], message1[BUFFER_SIZE];  //message para o registo de um novo no
     char *token;
-    char TCP_IParray[5][BUFFER_SIZE];//5 for now
-    char TCP_PORTarray[5][BUFFER_SIZE];
-    int TCP_NodesCounter = 0;
 
     enum {notreg, goingout, regwait, reg, notregwait, listwait} state;
     fd_set rfds;
@@ -47,9 +52,8 @@ int main (int argc, char* argv[]){
         exit(1);//in order 2 exit the programm
 
     /*APPLICATION STARTS HERE*/
-    node_s node;
-    node.nodeIP = *argv[1];
-    node.nodeTCP = *argv[2];
+    strcpy(node.nodeIP, argv[1]);
+    strcpy(node.nodeTCP, argv[2]);
 
     sockfd=socket(AF_INET,SOCK_DGRAM,0);//UDP socket 
     if(sockfd==-1)
@@ -146,11 +150,12 @@ int main (int argc, char* argv[]){
                 if (flag_list) {     //segunda vez que entra neste estado ja c a lista
 
                     //select one node
-
                     //connect to it
+                    tcp_cli();
+
                     //register -- done
                     
-                    sprintf(message, "REG %s %s %s", node.netid, argv[1], argv[2]);
+                    sprintf(message, "REG %s %s %s", node.netid, node.nodeIP, node.nodeTCP);
                     n=sendto(sockfd,message, strlen(message), 0, server_info->ai_addr, server_info->ai_addrlen); 
                     if(n==-1)
                     {
@@ -316,7 +321,7 @@ int main (int argc, char* argv[]){
                                 
                             
                             printf("List Received.\nndn>"); 
-                            print_TCParray(TCP_IParray, TCP_PORTarray, TCP_NodesCounter);
+                            print_TCParray();
                             fflush(stdout);
                         } //lista recebida
                         else printf("Error: Return message descriptor . \n");
@@ -333,10 +338,10 @@ int main (int argc, char* argv[]){
         
     }//while()
 
-close(sockfd);
-freeaddrinfo(server_info);
+    close(sockfd);
+    freeaddrinfo(server_info);
 
-exit(0);
+    exit(0);
 }//main
 
 
@@ -386,14 +391,190 @@ bool validate_inputArgs(int argc, char* argv[]){
     return true; //if nothing's wrong, return 1 == all validated
 }
 
+void tcp_cli ()
+{
+    if(choose_extern()!=1)  //se for o primeiro no a ser registado salta 
+    {
+        struct addrinfo hints, *res;
+        int fd, n;
+        ssize_t nbytes, nleft, nwritten, nread; 
+        char *ptr,buffer[128+1];
+
+        fd = socket(AF_INET,SOCK_STREAM,0);//TCP socket 
+        if(fd==-1)
+        {
+            printf("Error: Unexpected TCP_cli socket\n");
+            exit(1); 
+        }
+        memset(&hints,0,sizeof hints); 
+        hints.ai_family=AF_INET;//IPv4
+        hints.ai_socktype=SOCK_STREAM;//TCP socket
+
+        
+        n=getaddrinfo(node.extern_IP, node.extern_PORT, &hints,&res);       //meter aqui o TCP do no escolhido 
+        if(n!=0)
+        {
+            printf("Error: Unexpected getaddrinfo cli\n");
+            exit(1);
+        }
+        n=connect(fd,res->ai_addr,res->ai_addrlen); 
+        if(n==-1)
+        {
+            printf("Error: Unexpected connect\n");
+            exit(1);
+        }
+        //-------------------------------- CONNECTED ------------------------------------
+        ptr=strcpy(buffer,"Hello!\n"); 
+        nbytes=7;
+        nleft=nbytes; 
+
+        while(nleft>0)
+        {
+            nwritten=write(fd,ptr,nleft);
+            if(nwritten<=0)
+            {
+                printf("Error: Unexpected write\n");
+                exit(1);
+            } 
+            nleft-=nwritten;
+            ptr+=nwritten;
+        }
+
+        nleft=nbytes; 
+        ptr=buffer; 
+        
+        while(nleft>0)
+        {
+            nread=read(fd,ptr,nleft);
+            if(nread==-1)
+            {
+                printf("Error: Unexpected read\n");
+                exit(1);
+            }
+            else if(nread==0) break;//closed by peer 
+            nleft-=nread;
+            ptr+=nread;
+        }
+        nread=nbytes-nleft;
+
+        buffer[nread] = '\0'; 
+        printf("echo: %s\n", buffer); 
+        close(fd);
+    }
+    
+    return;
+}
+
+int choose_extern()
+{
+    if (TCP_NodesCounter == 0)
+    {
+        //strcpy(node.extern_id = node.nodeid;
+        strcpy(node.extern_IP, node.nodeIP);
+        strcpy(node.extern_PORT, node.nodeTCP);
+
+        //strcpy(node.backup_nid = node.nodeid;
+        strcpy(node.backup_IP, node.nodeIP);
+        strcpy(node.backup_PORT, node.nodeTCP);
+        printf("estava sozinho\n");
+        return(1);
+    }
+
+    else if (TCP_NodesCounter == 1)
+    {
+        //strcpy(node.extern_id = node.nodeid;
+        strcpy(node.extern_IP, TCP_IParray[0]);
+        strcpy(node.extern_PORT, TCP_PORTarray[0]);
+
+        //strcpy(node.backup_nid = node.nodeid;
+        strcpy(node.backup_IP, TCP_IParray[0]);
+        strcpy(node.backup_PORT, TCP_PORTarray[0]);
+
+        return(0);
+    }
+    
+    //for (int i = 0; i < array_size; i++)
+    //{
+        /* code */
+    //}
+    return 0;
+    
+}
 
 
-void execute();
+void tcp_serv ()
+{
+    struct addrinfo hints,*res;
+    ssize_t n, nw;
+    int fd,newfd,errcode;
+    struct sockaddr addr;
+    socklen_t addrlen; 
+    char *ptr,buffer[128];
+    if((fd=socket(AF_INET,SOCK_STREAM,0))==-1)
+    {
+        printf("Error: Unexpected TCP_serv socket\n");
+        exit(1);
+    }
+    memset(&hints,0,sizeof hints);
+    hints.ai_family=AF_INET;//IPv4
+    hints.ai_socktype=SOCK_STREAM;//TCP socket
+    hints.ai_flags=AI_PASSIVE; 
+    if((errcode=getaddrinfo(NULL, node.nodeTCP,&hints,&res))!=0)    //meter aqui o TCP do no escolhido 
+    {
+        printf("Error: Unexpected getaddrinfo serv\n");
+        exit(1);
+    }
+    if(bind(fd,res->ai_addr,res->ai_addrlen)==-1)
+    {
+        printf("Error: Unexpected bind\n");
+        exit(1);
+    }
+    if(listen(fd,5)==-1)
+    {
+        printf("Error: Unexpected listen\n");
+        exit(1);
+    }
 
-void print_TCParray(char IP_Array[5][BUFFER_SIZE], char Port_Array[5][BUFFER_SIZE], int array_size){
+    while(1)
+    {
+        addrlen=sizeof(addr); 
+        if((newfd=accept(fd,&addr,&addrlen))==-1)
+            {
+                printf("Error: Unexpected accept\n");
+                exit(1);
+            } 
+        
+        while((n=read(newfd,buffer,128))!=0)
+        {
+            if(n==-1)
+            {
+                printf("Error: Unexpected read\n");
+                exit(1);
+            } 
+            ptr=&buffer[0];
+            while(n>0)
+            {
+                if((nw=write(newfd,ptr,n))<=0)
+                {
+                    printf("Error: Unexpected write\n");
+                    exit(1);
+                } 
+                n-=nw; 
+                ptr+=nw;
+            }
+            close(newfd);
+        } 
+    } 
+
+}
+
+
+
+void print_TCParray(){
     int i = 0;
 
-    for(i = 0; i<array_size; i++){
-        printf("Array[%d]::  IP: %s   Port: %s\n\n", i, IP_Array[i], Port_Array[i]);
+    for(i = 0; i<TCP_NodesCounter; i++){
+        printf("Array[%d]::  IP: %s   Port: %s\n\n", i, TCP_IParray[i], TCP_PORTarray[i]);
     }
 }
+

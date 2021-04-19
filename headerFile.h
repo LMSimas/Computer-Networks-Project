@@ -2,6 +2,16 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #define BUFFER_SIZE 1024
-void print_TCParray(char[5][BUFFER_SIZE], char[5][BUFFER_SIZE], int);
+
+void print_TCParray();
 
 bool validate_inputArgs(int argc, char* argv[]);
+
+void tcp_cli ();
+
+int choose_extern();
+
+void tcp_serv ();
+
+ 
+ 
