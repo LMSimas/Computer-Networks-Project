@@ -7,7 +7,7 @@
 #include <netdb.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE 1024
+
 
 typedef struct _node {
     char netid[BUFFER_SIZE];
@@ -26,7 +26,11 @@ int flag_list = 0;
 int main (int argc, char* argv[]){
 
     char buffer[BUFFER_SIZE], command[BUFFER_SIZE], netid[BUFFER_SIZE], nodeid[BUFFER_SIZE], message[BUFFER_SIZE], message1[BUFFER_SIZE];  //message para o registo de um novo no
-    
+    char *token;
+    char TCP_IParray[5][BUFFER_SIZE];//5 for now
+    char TCP_PORTarray[5][BUFFER_SIZE];
+    int TCP_NodesCounter = 0;
+
     enum {notreg, goingout, regwait, reg, notregwait, listwait} state;
     fd_set rfds;
     int maxfd, counter, sockfd;
@@ -287,14 +291,32 @@ int main (int argc, char* argv[]){
                         exit(1);
                     }
                     message[n]='\0';
-                    printf("mensagem -> %s\n", message);
+                    //printf("mensagem -> %s\n", message);
 
                     if (sscanf(message, "%s", message1)==1)
                     { 
                         //printf("mensagem comeca com -> %s\n", message1);
                         if (strcmp(message1, "NODESLIST")==0)
-                        {
+                        {   
+                            token = strtok(message, "\n");//get the "NODESLIST\n"
+
+                            while(token != NULL && TCP_NodesCounter<5){
+                                //printf("%s\n\n", token);
+
+                                token = strtok(NULL, " ");//get TCP IP
+                                if(token != NULL){//if we don't have any node in the list
+                                    sscanf(token, "%s", TCP_IParray[TCP_NodesCounter]);
+                                    token = strtok(NULL, "\n");//get TCP PORT
+                                    sscanf(token, "%s", TCP_PORTarray[TCP_NodesCounter]);
+                                    //here a new node is already in the array
+                                    TCP_NodesCounter++;
+                                }
+
+                            }
+                                
+                            
                             printf("List Received.\nndn>"); 
+                            print_TCParray(TCP_IParray, TCP_PORTarray, TCP_NodesCounter);
                             fflush(stdout);
                         } //lista recebida
                         else printf("Error: Return message descriptor . \n");
@@ -367,3 +389,11 @@ bool validate_inputArgs(int argc, char* argv[]){
 
 
 void execute();
+
+void print_TCParray(char IP_Array[5][BUFFER_SIZE], char Port_Array[5][BUFFER_SIZE], int array_size){
+    int i = 0;
+
+    for(i = 0; i<array_size; i++){
+        printf("Array[%d]::  IP: %s   Port: %s\n\n", i, IP_Array[i], Port_Array[i]);
+    }
+}
