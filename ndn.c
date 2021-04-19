@@ -10,14 +10,19 @@
 
 
 typedef struct _node {
-    char netid[BUFFER_SIZE];
-    char nodeid[BUFFER_SIZE];
+    char netid [BUFFER_SIZE];
+    
+    char nodeid [BUFFER_SIZE];
     char nodeIP;
     char nodeTCP;
-    int extern_nid;
-    char extern_contact[BUFFER_SIZE];
-    int backup_nid;
-    char backup_contact[BUFFER_SIZE];
+
+    char extern_id [BUFFER_SIZE];
+    char extern_IP [BUFFER_SIZE];
+    char extern_PORT [BUFFER_SIZE];
+
+    char backup_id [BUFFER_SIZE];
+    char backup_IP [BUFFER_SIZE];
+    char backup_PORT [BUFFER_SIZE];
 } node_s;
 
 int flag_list = 0;
@@ -146,8 +151,9 @@ int main (int argc, char* argv[]){
                 if (flag_list) {     //segunda vez que entra neste estado ja c a lista
 
                     //select one node
-
                     //connect to it
+                    tcp_cli(TCP_IParray[5][BUFFER_SIZE], TCP_PORTarray[5][BUFFER_SIZE], TCP_NodesCounter);
+
                     //register -- done
                     
                     sprintf(message, "REG %s %s %s", node.netid, argv[1], argv[2]);
@@ -333,10 +339,10 @@ int main (int argc, char* argv[]){
         
     }//while()
 
-close(sockfd);
-freeaddrinfo(server_info);
+    close(sockfd);
+    freeaddrinfo(server_info);
 
-exit(0);
+    exit(0);
 }//main
 
 
@@ -386,9 +392,183 @@ bool validate_inputArgs(int argc, char* argv[]){
     return true; //if nothing's wrong, return 1 == all validated
 }
 
+void tcp_cli (char IP_Array[5][BUFFER_SIZE], char Port_Array[5][BUFFER_SIZE], int array_size)
+{
+    if(choose_extern(IP_Array[5][BUFFER_SIZE], Port_Array[5][BUFFER_SIZE], array_size)!=1)  //se for o primeiro no a ser registado salta 
+    {
+        struct addrinfo hints, *res;
+        int fd, n;
+        ssize_t nbytes, nleft, nwritten, nread; 
+        char *ptr,buffer[128+1];
+
+        fd = socket(AF_INET,SOCK_STREAM,0);//TCP socket 
+        if(fd==-1)
+        {
+            printf("Error: Unexpected TCP_cli socket\n");
+            exit(1); 
+        }
+        memset(&hints,0,sizeof hints); 
+        hints.ai_family=AF_INET;//IPv4
+        hints.ai_socktype=SOCK_STREAM;//TCP socket
+
+        
+        n=getaddrinfo(node.externIP, node.externPORT, &hints,&res);       //meter aqui o TCP do no escolhido 
+        if(n!=0)
+        {
+            printf("Error: Unexpected getaddrinfo cli\n");
+            exit(1);
+        }
+        n=connect(fd,res->ai_addr,res->ai_addrlen); 
+        if(n==-1)
+        {
+            printf("Error: Unexpected connect\n");
+            exit(1);
+        }
+        //-------------------------------- CONNECTED ------------------------------------
+        ptr=strcpy(buffer,"Hello!\n"); 
+        nbytes=7;
+        nleft=nbytes; 
+
+        while(nleft>0)
+        {
+            nwritten=write(fd,ptr,nleft);
+            if(nwritten<=0)
+            {
+                printf("Error: Unexpected write\n");
+                exit(1);
+            } 
+            nleft-=nwritten;
+            ptr+=nwritten;
+        }
+
+        nleft=nbytes; 
+        ptr=buffer; 
+        
+        while(nleft>0)
+        {
+            nread=read(fd,ptr,nleft);
+            if(nread==-1)
+            {
+                printf("Error: Unexpected read\n");
+                exit(1);
+            }
+            else if(nread==0) break;//closed by peer 
+            nleft-=nread;
+            ptr+=nread;
+        }
+        nread=nbytes-nleft;
+
+        buffer[nread] = '\0'; 
+        printf("echo: %s\n", buffer); 
+        close(fd);
+    }
+    
+    exit(0);
+}
+
+int choose_extern(char IP_Array[5][BUFFER_SIZE], char Port_Array[5][BUFFER_SIZE], int array_size)
+{
+    if (array_size == 0)
+    {
+        //strcpy(node.extern_id = node.nodeid;
+        strcpy(node.extern_IP, node.nodeIP);
+        strcpy(node.extern_PORT, node.nodeTCP);
+
+        //strcpy(node.backup_nid = node.nodeid;
+        strcpy(node.backup_IP, node.nodeIP);
+        strcpy(node.backup_PORT, node.nodeTCP);
+        printf("estava sozinho\n");
+        return(1);
+    }
+
+    else if (array_size == 1)
+    {
+        //strcpy(node.extern_id = node.nodeid;
+        strcpy(node.extern_IP, IP_Array[0]);
+        strcpy(node.extern_PORT, Port_Array[0]);
+
+        //strcpy(node.backup_nid = node.nodeid;
+        strcpy(node.backup_IP, IP_Array[0]);
+        strcpy(node.backup_PORT, Port_Array[0]);
+
+        return(0);
+    }
+    
+    //for (int i = 0; i < array_size; i++)
+    //{
+        /* code */
+    //}
+    
+}
 
 
-void execute();
+void tcp_serv (char IP_Array[5][BUFFER_SIZE], char Port_Array[5][BUFFER_SIZE])
+{
+    struct addrinfo hints,*res;
+    ssize_t n, nw;
+    int fd,newfd,errcode;
+    struct sockaddr addr;
+    socklen_t addrlen; 
+    char *ptr,buffer[128];
+    if((fd=socket(AF_INET,SOCK_STREAM,0))==-1)
+    {
+        printf("Error: Unexpected TCP_serv socket\n");
+        exit(1);
+    }
+    memset(&hints,0,sizeof hints);
+    hints.ai_family=AF_INET;//IPv4
+    hints.ai_socktype=SOCK_STREAM;//TCP socket
+    hints.ai_flags=AI_PASSIVE; 
+    if((errcode=getaddrinfo(NULL,"58001",&hints,&res))!=0)    //meter aqui o TCP do no escolhido 
+    {
+        printf("Error: Unexpected getaddrinfo serv\n");
+        exit(1);
+    }
+    if(bind(fd,res->ai_addr,res->ai_addrlen)==-1)
+    {
+        printf("Error: Unexpected bind\n");
+        exit(1);
+    }
+    if(listen(fd,5)==-1)
+    {
+        printf("Error: Unexpected listen\n");
+        exit(1);
+    }
+
+    while(1)
+    {
+        addrlen=sizeof(addr); 
+        if((newfd=accept(fd,&addr,&addrlen))==-1)
+            {
+                printf("Error: Unexpected accept\n");
+                exit(1);
+            } 
+        
+        while((n=read(newfd,buffer,128))!=0)
+        {
+            if(n==-1)
+            {
+                printf("Error: Unexpected read\n");
+                exit(1);
+            } 
+            ptr=&buffer[0];
+            while(n>0)
+            {
+                if((nw=write(newfd,ptr,n))<=0)
+                {
+                    printf("Error: Unexpected write\n");
+                    exit(1);
+                } 
+                n-=nw; 
+                ptr+=nw;
+            }
+            close(newfd);
+        } 
+    } 
+
+}
+
+
 
 void print_TCParray(char IP_Array[5][BUFFER_SIZE], char Port_Array[5][BUFFER_SIZE], int array_size){
     int i = 0;
@@ -397,3 +577,4 @@ void print_TCParray(char IP_Array[5][BUFFER_SIZE], char Port_Array[5][BUFFER_SIZ
         printf("Array[%d]::  IP: %s   Port: %s\n\n", i, IP_Array[i], Port_Array[i]);
     }
 }
+
