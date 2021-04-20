@@ -47,6 +47,17 @@ int main (int argc, char* argv[]){
     struct sockaddr server_addr;
     socklen_t addrlen;
 
+    /*TCP CLIENT VARIABLES*/
+    struct addrinfo cli_hints;
+    struct addrinfo *cli_res;
+    int cli_fd;
+    /*TCP SERVER VARIABLES*/
+
+
+    /*****************************/
+    /*****PROGRAM STARTS HERE*****/
+    /*****************************/
+
     /*VALIDATION STEP*/
     if(!validate_inputArgs(argc, argv)) // if NOT validated
         exit(1);//in order 2 exit the programm
@@ -391,6 +402,44 @@ bool validate_inputArgs(int argc, char* argv[]){
     return true; //if nothing's wrong, return 1 == all validated
 }
 
+
+void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int* cli_fd){
+    if(choose_extern()!=1)  //se for o primeiro no a ser registado salta 
+    {
+        //struct addrinfo hints, *res;
+        int fd, n;
+        //ssize_t nbytes, nleft, nwritten, nread; 
+        //char *ptr,buffer[128+1];
+
+        *cli_fd = socket(AF_INET,SOCK_STREAM,0);//TCP socket 
+        if(*cli_fd==-1)
+        {
+            printf("Error: Unexpected TCP_cli socket\n");
+            exit(1); 
+        }
+        memset(cli_hints,0,sizeof (*cli_hints)); 
+        cli_hints->ai_family=AF_INET;//IPv4
+        cli_hints->ai_socktype=SOCK_STREAM;//TCP socket
+
+        
+        n=getaddrinfo(node.extern_IP, node.extern_PORT, cli_hints,&cli_res);       //meter aqui o TCP do no escolhido 
+        if(n!=0)
+        {
+            printf("Error: Unexpected getaddrinfo cli\n");
+            exit(1);
+        }
+        n=connect(fd,cli_res->ai_addr,cli_res->ai_addrlen); 
+        if(n==-1)
+        {
+            printf("Error: Unexpected connect\n");
+            exit(1);
+        }
+        else{
+            printf("client successfully connected\n\n");
+        }
+    }
+    return;
+}
 void tcp_cli ()
 {
     if(choose_extern()!=1)  //se for o primeiro no a ser registado salta 
@@ -500,6 +549,37 @@ int choose_extern()
     return 0;
     
 }
+
+void prepare_tcpServer(struct addrinfo *ser_hints, struct addrinfo *ser_res, int *ser_fd){
+    int errcode;
+    
+    if((*ser_fd=socket(AF_INET,SOCK_STREAM,0))==-1)
+    {
+        printf("Error: Unexpected TCP_serv socket\n");
+        exit(1);
+    }
+    memset(ser_hints,0,sizeof (*ser_hints));
+    ser_hints->ai_family=AF_INET;//IPv4
+    ser_hints->ai_socktype=SOCK_STREAM;//TCP socket
+    ser_hints->ai_flags=AI_PASSIVE; 
+    if((errcode=getaddrinfo(NULL, node.nodeTCP,ser_hints,&ser_res))!=0)    //meter aqui o TCP do no escolhido 
+    {
+        printf("Error: Unexpected getaddrinfo serv\n");
+        exit(1);
+    }
+    if(bind(*ser_fd,ser_res->ai_addr,ser_res->ai_addrlen)==-1)
+    {
+        printf("Error: Unexpected bind\n");
+        exit(1);
+    }
+    if(listen(*ser_fd,5)==-1)
+    {
+        printf("Error: Unexpected listen\n");
+        exit(1);
+    }
+
+}
+
 
 
 void tcp_serv ()
