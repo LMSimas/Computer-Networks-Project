@@ -2,9 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
 #include <unistd.h>
 
 
@@ -52,8 +49,15 @@ int main (int argc, char* argv[]){
     struct addrinfo *cli_res;
     int cli_fd;
     /*TCP SERVER VARIABLES*/
+    struct addrinfo ser_hints;
+    struct addrinfo *ser_res;
+    int ser_listenfd;
+    int ser_acceptfd;
+    int myclient_fd;
+    struct sockaddr myclient_addr;
 
-
+    /*VARIAVEIS DESCARTÁVEIS*/
+    char return_message[BUFFER_SIZE];
     /*****************************/
     /*****PROGRAM STARTS HERE*****/
     /*****************************/
@@ -93,7 +97,7 @@ int main (int argc, char* argv[]){
         { 
             case notreg:     FD_SET(0, &rfds); maxfd=0; break;
             case regwait:    FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
-            case reg:        FD_SET(0, &rfds); maxfd=0; break;
+            case reg:        FD_SET(0, &rfds); FD_SET(cli_fd, &rfds); FD_SET(ser_listenfd, &rfds); maxfd=ser_listenfd; break;//nsure about cli_fd
             case notregwait: FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
             case listwait:   FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
         }//switch(state)
@@ -105,6 +109,7 @@ int main (int argc, char* argv[]){
         else 
         {
             counter = select(maxfd+1,&rfds,(fd_set*)NULL,(fd_set*)NULL,(struct timeval *)NULL);
+
         }
 
         if(counter<=0)
@@ -162,7 +167,8 @@ int main (int argc, char* argv[]){
 
                     //select one node
                     //connect to it
-                    tcp_cli();
+                    //tcp_cli();
+                    prepare_tcpClient(&cli_hints, cli_res, &cli_fd);//CLIENT PREPARED
 
                     //register -- done
                     
@@ -207,8 +213,12 @@ int main (int argc, char* argv[]){
                         exit(1);
                     }
                     message[n]='\0';
-                    if (strcmp(message, "OKREG")==0){printf("Registered.\nndn>"); fflush(stdout); state=reg;} //esta registado
-
+                    if (strcmp(message, "OKREG")==0){
+                        printf("Registered.\nndn>");
+                        fflush(stdout);
+                        prepare_tcpServer(&ser_hints, ser_res, &ser_listenfd);//SERVER PREPARED
+                        state=reg;
+                        } //esta registado
 
                 }//UDP socket
             break;//regwait
@@ -245,6 +255,31 @@ int main (int argc, char* argv[]){
                     }
                 if(state!=goingout)printf("ndn> "); fflush(stdout); //prompt
                 }//stdin
+
+                else if (FD_ISSET(ser_listenfd,&rfds)){
+                    FD_CLR(ser_listenfd,&rfds);
+                    //accept
+                    addrlen=sizeof(myclient_addr); 
+                        if((myclient_fd=accept(ser_listenfd, &myclient_addr, &addrlen))==-1)
+                        {
+                            printf("Error: Unexpected accept\n");
+                            exit(1);
+                        }
+                    //escrever msg teste
+                    write(myclient_fd, "this is a message from server\n", strlen("this is a message from server\n"));
+                }
+                else if (FD_ISSET(cli_fd,&rfds)){
+                    FD_CLR(cli_fd,&rfds);
+                    //print resposta do cliente
+                    n=read(cli_fd,return_message,BUFFER_SIZE);
+                    if(n==-1){
+                        printf("Error rcving the server message\n\n");
+                        exit(1);
+                    }
+                    else{//tudo ok
+                        printf("Server Message:\n %s", return_message);
+                    }
+                }
             break;//reg
 
             case notregwait: //---------------------------------------------------------------------------
@@ -407,7 +442,7 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
     if(choose_extern()!=1)  //se for o primeiro no a ser registado salta 
     {
         //struct addrinfo hints, *res;
-        int fd, n;
+        int n;
         //ssize_t nbytes, nleft, nwritten, nread; 
         //char *ptr,buffer[128+1];
 
@@ -421,14 +456,15 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
         cli_hints->ai_family=AF_INET;//IPv4
         cli_hints->ai_socktype=SOCK_STREAM;//TCP socket
 
-        
-        n=getaddrinfo(node.extern_IP, node.extern_PORT, cli_hints,&cli_res);       //meter aqui o TCP do no escolhido 
+        printf("Node IP/PORT%s %s\n\n", node.extern_IP, node.extern_PORT);
+        n=getaddrinfo(node.extern_IP, node.extern_PORT, cli_hints, &cli_res);       //meter aqui o TCP do no escolhido 
         if(n!=0)
         {
             printf("Error: Unexpected getaddrinfo cli\n");
             exit(1);
         }
-        n=connect(fd,cli_res->ai_addr,cli_res->ai_addrlen); 
+        printf("cli_res->ai_addr %s\n", cli_res->ai_addr);
+        n=connect(*cli_fd,cli_res->ai_addr,cli_res->ai_addrlen); 
         if(n==-1)
         {
             printf("Error: Unexpected connect\n");
@@ -550,10 +586,10 @@ int choose_extern()
     
 }
 
-void prepare_tcpServer(struct addrinfo *ser_hints, struct addrinfo *ser_res, int *ser_fd){
+void prepare_tcpServer(struct addrinfo *ser_hints, struct addrinfo *ser_res, int *ser_listenfd){
     int errcode;
     
-    if((*ser_fd=socket(AF_INET,SOCK_STREAM,0))==-1)
+    if((*ser_listenfd=socket(AF_INET,SOCK_STREAM,0))==-1)
     {
         printf("Error: Unexpected TCP_serv socket\n");
         exit(1);
@@ -567,20 +603,18 @@ void prepare_tcpServer(struct addrinfo *ser_hints, struct addrinfo *ser_res, int
         printf("Error: Unexpected getaddrinfo serv\n");
         exit(1);
     }
-    if(bind(*ser_fd,ser_res->ai_addr,ser_res->ai_addrlen)==-1)
+    if(bind(*ser_listenfd, ser_res->ai_addr,ser_res->ai_addrlen)==-1)
     {
         printf("Error: Unexpected bind\n");
         exit(1);
     }
-    if(listen(*ser_fd,5)==-1)
+    if(listen(*ser_listenfd,5)==-1)
     {
         printf("Error: Unexpected listen\n");
         exit(1);
     }
-
+    printf("Server side prepared\n");
 }
-
-
 
 void tcp_serv ()
 {
@@ -647,8 +681,6 @@ void tcp_serv ()
     } 
 
 }
-
-
 
 void print_TCParray(){
     int i = 0;
