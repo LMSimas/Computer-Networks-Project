@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netdb.h>
+ #include <errno.h>
 
 #define BUFFER_SIZE 1024
 

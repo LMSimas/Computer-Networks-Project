@@ -443,6 +443,7 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
     {
         //struct addrinfo hints, *res;
         int n;
+        int var = 4;
         //ssize_t nbytes, nleft, nwritten, nread; 
         //char *ptr,buffer[128+1];
 
@@ -463,11 +464,15 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
             printf("Error: Unexpected getaddrinfo cli\n");
             exit(1);
         }
-        printf("cli_res->ai_addr %s\n", cli_res->ai_addr);
+        //printf("cli_res->ai_addr %s\n", cli_res->ai_addr);
         n=connect(*cli_fd,cli_res->ai_addr,cli_res->ai_addrlen); 
+        var = errno;
+        printf("errono:: %d\n", var);
         if(n==-1)
         {
             printf("Error: Unexpected connect\n");
+            //var = h_errno;
+            printf("ERRNO: %d\n", var);
             exit(1);
         }
         else{
