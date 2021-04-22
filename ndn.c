@@ -22,11 +22,13 @@ typedef struct _node {
     char backup_PORT [BUFFER_SIZE];
 } node_s;
 
+
 node_s node;
 int flag_list = 0;
 char TCP_IParray[5][BUFFER_SIZE];//5 for now
 char TCP_PORTarray[5][BUFFER_SIZE];
 int TCP_NodesCounter = 0;
+char tcp_msg[BUFFER_SIZE];
 
 int main (int argc, char* argv[]){
 
@@ -97,7 +99,11 @@ int main (int argc, char* argv[]){
         { 
             case notreg:     FD_SET(0, &rfds); maxfd=0; break;
             case regwait:    FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
-            case reg:        FD_SET(0, &rfds); FD_SET(cli_fd, &rfds); FD_SET(ser_listenfd, &rfds); maxfd=ser_listenfd; break;//nsure about cli_fd
+            case reg:        FD_SET(0, &rfds); FD_SET(cli_fd, &rfds); FD_SET(ser_listenfd, &rfds); maxfd=ser_listenfd;
+            if(myclient_fd!=0){//if NO CLIENTS CONNECTED
+                FD_SET(myclient_fd, &rfds); maxfd=myclient_fd;
+            }
+             break;//nsure about cli_fd
             case notregwait: FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
             case listwait:   FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
         }//switch(state)
@@ -109,7 +115,6 @@ int main (int argc, char* argv[]){
         else 
         {
             counter = select(maxfd+1,&rfds,(fd_set*)NULL,(fd_set*)NULL,(struct timeval *)NULL);
-
         }
 
         if(counter<=0)
@@ -255,20 +260,27 @@ int main (int argc, char* argv[]){
                     }
                 if(state!=goingout)printf("ndn> "); fflush(stdout); //prompt
                 }//stdin
-
+                /*******SERVER recebe NEW CLIENT******/
                 else if (FD_ISSET(ser_listenfd,&rfds)){
                     FD_CLR(ser_listenfd,&rfds);
                     //accept
                     addrlen=sizeof(myclient_addr); 
-                        if((myclient_fd=accept(ser_listenfd, &myclient_addr, &addrlen))==-1)
+                        if((myclient_fd=accept(ser_listenfd, &myclient_addr, &addrlen))==-1)//accept the new client
                         {
                             printf("Error: Unexpected accept\n");
                             exit(1);
                         }
-                    //escrever msg teste
-                    write(myclient_fd, "this is a message from server\n", strlen("this is a message from server\n"));
+                        else{
+                            read(myclient_fd, tcp_msg, BUFFER_SIZE);
+                            printf("Msg from Client\n :: %s\n", tcp_msg);
+
+                            sprintf(tcp_msg, "EXTERN %s %s\n", node.backup_IP, node.backup_PORT); //EXTERN IP TCP<LF>
+                            write(myclient_fd, tcp_msg, strlen(tcp_msg));
+                        }
+
                 }
-                else if (FD_ISSET(cli_fd,&rfds)){
+                /*******CLIENT a receber do SERVER*******/
+                else if (FD_ISSET(cli_fd,&rfds)){ 
                     FD_CLR(cli_fd,&rfds);
                     //print resposta do cliente
                     n=read(cli_fd,return_message,BUFFER_SIZE);
@@ -278,6 +290,18 @@ int main (int argc, char* argv[]){
                     }
                     else{//tudo ok
                         printf("Server Message:\n %s", return_message);
+                    }
+                }
+                /**********Server recebe dos Client*******/
+                else if(FD_ISSET(myclient_fd, &rfds)){//FZR FOR PARA O VECTOR DE CLIENTS
+                    FD_CLR(myclient_fd, &rfds);
+                    n=read(myclient_fd,return_message,BUFFER_SIZE);
+                    if(n==-1){
+                        printf("Error rcving the server message\n\n");
+                        exit(1);
+                    }
+                    else{//tudo ok
+                        printf("Client Message\n %s", return_message);
                     }
                 }
             break;//reg
@@ -477,6 +501,11 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
         }
         else{
             printf("client successfully connected\n\n");
+            sprintf(tcp_msg, "NEW %s %s\n", node.nodeIP, node.nodeTCP); //NEW IP TCP <LF>
+            write(*cli_fd, tcp_msg, strlen(tcp_msg));
+
+            read(*cli_fd, tcp_msg, BUFFER_SIZE);
+            printf("ConnectingMSG from Server\n::%s\n", tcp_msg);
         }
     }
     return;
