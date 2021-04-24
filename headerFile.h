@@ -61,6 +61,11 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
 void notregwait_stdinCommands(char buffer[], char command[]);
 void listwait_stdinCommands(char buffer[], char command[]);
 
-
- 
+/*MultiClients*/
+void insertNode_clientsList(clientNode *new_node);
+void free_clientNode(clientNode * node);
+clientNode* alloc_clientNode(int client_fd);
+int get_ClientsMaxfd();
+void prepare_ClientFDSets(fd_set * rfds);
+int get_ClientISSET(fd_set * rfds);
  

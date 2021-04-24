@@ -17,6 +17,7 @@ int TCP_NodesCounter = 0;
 char tcp_msg[BUFFER_SIZE];
 
 clientNode *clientsList_head = NULL;
+int clients_OnLine = 0; //number of clients On server's Line
 
 int main (int argc, char* argv[]){
     char buffer[BUFFER_SIZE], netid[BUFFER_SIZE], nodeid[BUFFER_SIZE], message1[BUFFER_SIZE];
@@ -26,6 +27,7 @@ int main (int argc, char* argv[]){
 
     fd_set rfds;
     int maxfd, counter, sockfd;
+    int target_fd;
 
     /*UDP SERVER VARIABLES*/
     struct addrinfo udp_hints, *udp_serverInfo; //for udp server comms
@@ -75,11 +77,15 @@ int main (int argc, char* argv[]){
         {
             case notreg:     FD_SET(0, &rfds); maxfd=0; break;
             case regwait:    FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
-            case reg:        FD_SET(0, &rfds); FD_SET(cli_fd, &rfds); FD_SET(ser_listenfd, &rfds); maxfd=ser_listenfd;
-            if(myclient_fd!=0){//if NO CLIENTS CONNECTED
-                FD_SET(myclient_fd, &rfds); maxfd=myclient_fd;
+
+            case reg:        FD_SET(0, &rfds); FD_SET(cli_fd, &rfds); FD_SET(ser_listenfd, &rfds);//prepare server, listen & stdin FD
+            maxfd=ser_listenfd;
+            if(clientsList_head!=NULL){//if CLIENTS CONNECTED -- update maxfd and prepare clients FDSets
+                prepare_ClientFDSets(&rfds);
+                maxfd=get_ClientsMaxfd;
             }
-             break;//nsure about cli_fd
+             break;//case reg
+
             case notregwait: FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
             case listwait:   FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
         }//switch(state)
@@ -150,10 +156,18 @@ int main (int argc, char* argv[]){
 
                     rcv_msgFromServer(cli_fd,return_message);
                 }
-                /**********Server recebe dos Client*******/
-                else if(FD_ISSET(myclient_fd, &rfds)){//FZR FOR PARA O VECTOR DE CLIENTS
+                
+                /*else if(FD_ISSET(myclient_fd, &rfds)){//FZR FOR PARA O VECTOR DE CLIENTS
                     FD_CLR(myclient_fd, &rfds);
                     rcv_msgFromClients(myclient_fd, return_message);
+                }*/
+                /**********Server recebe dos Client*******/
+                else{
+                    target_fd = get_ClientISSET(&rfds);
+                    if(target_fd != -1){//if we have some fd ISSET
+                        rcv_msgFromClients(target_fd, return_message);
+                    }
+
                 }
             break;//reg
 
@@ -306,7 +320,7 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
             write(*cli_fd, tcp_msg, strlen(tcp_msg));
 
             read(*cli_fd, tcp_msg, BUFFER_SIZE);
-            printf("ConnectingMSG from Server\n::%s\n", tcp_msg);
+            printf("MSG from Server\n::%s\n", tcp_msg);
         }
     }
     return;
@@ -339,11 +353,16 @@ int choose_extern()
 
         return(0);
     }
+    else{//CHANGE THIS FOR RANDOM CONNECT
+        
+        strcpy(node.extern_IP, TCP_IParray[0]);
+        strcpy(node.extern_PORT, TCP_PORTarray[0]);
+
+        strcpy(node.backup_IP, TCP_IParray[0]);
+        strcpy(node.backup_PORT, TCP_PORTarray[0]);
+
+    }
     
-    //for (int i = 0; i < array_size; i++)
-    //{
-        /* code */
-    //}
     return 0;
     
 }
@@ -435,6 +454,7 @@ void udp_regRequest(char message[], struct addrinfo * udp_serverInfo, int sockfd
         printf("Error: Unexpected sendto\n");
         exit(1);
     }
+    
     flag_list = 0;
     state=regwait;
 }
@@ -502,6 +522,7 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
 }
 
 void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_listenfd){
+    clientNode *new_node = NULL;
     socklen_t addrlen = sizeof(myclient_addr);
 
     if((myclient_fd=accept(ser_listenfd, myclient_addr, &addrlen))==-1)//accept the new client
@@ -510,11 +531,13 @@ void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_liste
         exit(1);
     }
     else{
-        read(myclient_fd, tcp_msg, BUFFER_SIZE);
-        printf("Msg from Client\n :: %s\n", tcp_msg);
+        new_node = alloc_clientNode(myclient_fd);//alloc || insert in clientsList
+        clients_OnLine++;
+        read(new_node->fd, tcp_msg, BUFFER_SIZE);
+        printf("Msg from Client\n ::%s\n", tcp_msg);
 
         sprintf(tcp_msg, "EXTERN %s %s\n", node.backup_IP, node.backup_PORT); //EXTERN IP TCP<LF>
-        write(myclient_fd, tcp_msg, strlen(tcp_msg));
+        write(new_node->fd, tcp_msg, strlen(tcp_msg));
     }
 }
 
@@ -629,4 +652,75 @@ void rcv_nodeslist(int sockfd, char message[], struct sockaddr * server_addr, so
     state=notreg;
 }
 
+clientNode* alloc_clientNode(int client_fd){ 
+    clientNode * new_clientNode = (clientNode*) malloc(sizeof(clientNode));
 
+    new_clientNode->next=NULL;
+    new_clientNode->fd = client_fd;
+    insertNode_clientsList(new_clientNode);
+
+    return new_clientNode; 
+}
+
+void free_clientNode(clientNode * node){
+    free(node);
+}
+
+void insertNode_clientsList(clientNode *new_node){
+
+    clientNode* aux = clientsList_head;
+
+    if(clientsList_head == NULL){//if the new node is the 1st one
+        clientsList_head = new_node;
+    }
+    else{
+        while(aux->next != NULL){
+            aux=aux->next;
+        }//get the last node of the list
+
+        aux->next = new_node;
+    }
+
+}
+
+int get_ClientsMaxfd(){
+    clientNode* aux = clientsList_head;
+    int max_fd = 0;
+
+    if(aux->next == NULL){//if only 1 node in the list
+        max_fd = aux->fd;
+        return max_fd;
+    }
+
+    while(aux->next !=NULL){
+        if(max_fd < aux->fd)
+            max_fd = aux->fd;
+
+        aux=aux->next;
+    }
+
+    return max_fd;
+}
+
+void prepare_ClientFDSets(fd_set * rfds){
+    clientNode* aux = clientsList_head;
+
+    while(aux != NULL){
+        FD_SET(aux->fd, rfds);
+        aux=aux->next;
+    }
+}
+
+int get_ClientISSET(fd_set * rfds){
+    clientNode* aux = clientsList_head;
+
+    while(aux!=NULL){
+        if(FD_ISSET(aux->fd,rfds)){
+            FD_CLR(aux->fd,rfds);
+            return aux->fd;
+        }
+        aux=aux->next;
+    }
+
+    return -1;//if no FD did ISSET
+}
