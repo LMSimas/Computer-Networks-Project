@@ -48,8 +48,8 @@ void udp_regRequest(char message[], struct addrinfo * udp_serverInfo, int sockfd
 void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_listenfd);
 
 /*RCV Messages*/
-void rcv_msgFromServer(int cli_fd, char return_message[]);
-void rcv_msgFromClients(int myclient_fd, char return_message[]);
+void rcv_msgFromServer(int cli_fd);
+void rcv_msgFromClients(int myclient_fd);
 void rcv_OkReg(int sockfd, char message[], struct sockaddr * server_addr, socklen_t * addrlen, struct addrinfo * ser_hints,
 struct addrinfo * ser_res, int * ser_listenfd);
 void rcv_OkUnreg(int sockfd, char message[], struct sockaddr * server_addr, socklen_t * addrlen);
@@ -58,7 +58,7 @@ void rcv_nodeslist(int sockfd, char message[], struct sockaddr * server_addr, so
 /*COMMANDS*/
 void notreg_stdinCommands(char buffer[], char command[], char message[], int sockfd, struct addrinfo * udp_serverInfo);
 void regwait_stdinCommands(char buffer[], char command[]);
-void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo);
+void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo, int cli_fd, int ser_listenfd);
 void notregwait_stdinCommands(char buffer[], char command[]);
 void listwait_stdinCommands(char buffer[], char command[]);
 

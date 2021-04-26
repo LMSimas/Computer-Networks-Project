@@ -15,9 +15,11 @@ char TCP_PORTarray[NODELIST_SIZE][BUFFER_SIZE];
 int TCP_NodesCounter = 0;
 
 char tcp_msg[BUFFER_SIZE];
+char return_message[BUFFER_SIZE];
 
 clientNode *clientsList_head = NULL;
 int clients_OnLine = 0; //number of clients On server's Line
+int var = 0;
 
 int main (int argc, char* argv[]){
     char buffer[BUFFER_SIZE], netid[BUFFER_SIZE], nodeid[BUFFER_SIZE], message1[BUFFER_SIZE];
@@ -50,7 +52,7 @@ int main (int argc, char* argv[]){
     struct sockaddr myclient_addr;
 
     /*VARIAVEIS DESCARTÁVEIS*/
-    char return_message[BUFFER_SIZE];
+    
 
     /*****************************/
     /*****PROGRAM STARTS HERE*****/
@@ -141,7 +143,7 @@ int main (int argc, char* argv[]){
                 if(FD_ISSET(0,&rfds)) //stdin
                 {
                     FD_CLR(0,&rfds);
-                    reg_stdinCommands(buffer, command, message, sockfd, udp_serverInfo);
+                    reg_stdinCommands(buffer, command, message, sockfd, udp_serverInfo, cli_fd, ser_listenfd);
                 }//stdin
 
                 /*******SERVER recebe NEW CLIENT******/
@@ -154,7 +156,7 @@ int main (int argc, char* argv[]){
                 else if (FD_ISSET(cli_fd,&rfds)){ 
                     FD_CLR(cli_fd,&rfds);
 
-                    rcv_msgFromServer(cli_fd,return_message);
+                    rcv_msgFromServer(cli_fd);
                 }
                 
                 /*else if(FD_ISSET(myclient_fd, &rfds)){//FZR FOR PARA O VECTOR DE CLIENTS
@@ -165,7 +167,7 @@ int main (int argc, char* argv[]){
                 else{
                     target_fd = get_ClientISSET(&rfds);
                     if(target_fd != -1){//if we have some fd ISSET
-                        rcv_msgFromClients(target_fd, return_message);
+                        rcv_msgFromClients(target_fd);
                     }
 
                 }
@@ -202,6 +204,7 @@ int main (int argc, char* argv[]){
     }//while()
 
     close(sockfd);
+
     freeaddrinfo(udp_serverInfo);
 
     exit(0);
@@ -321,11 +324,12 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
             sprintf(tcp_msg, "NEW %s %s\n", node.nodeIP, node.nodeTCP); //NEW IP TCP <LF>
             write(*cli_fd, tcp_msg, strlen(tcp_msg));
 
+
             memset(tcp_msg, 0, sizeof tcp_msg);
 
-            read(*cli_fd, tcp_msg, BUFFER_SIZE);
+            //read(*cli_fd, tcp_msg, BUFFER_SIZE);
             //Strtok extern e meter no backup com strcpy(node.extern_PORT, TCP_PORTarray[random_node]);
-            printf("MSG from Server\n::%s\n", tcp_msg);
+            //printf("MSG from Server\n::%s\n", tcp_msg);
         }
     }
     return;
@@ -499,8 +503,10 @@ struct addrinfo * ser_res, int * ser_listenfd){
     } //esta registado
 }
 
-void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo){
+void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo, int cli_fd, int ser_listenfd){
     ssize_t n;
+    clientNode* aux = clientsList_head;//aponta pro inicio da lista dos clients
+    clientNode* free_aux = aux;
     if (fgets(buffer, BUFFER_SIZE, stdin)!=NULL) 
     {
         if(sscanf(buffer, "%s", command)==1)
@@ -508,6 +514,18 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
             if(strcmp(command, "join")==0) printf("Already joined. \n");
             else if (strcmp(command, "leave")==0) 
             {
+                //close TCP connections to interns
+                /*while (aux!=NULL)
+                {
+                    close(aux->fd);
+                    free_aux = aux;
+                    aux = aux->next;//avança prox nó
+                    free(free_aux);
+                }
+                //close remaining TCP connections 
+                close(cli_fd);
+                close(ser_listenfd);*/
+                
                 sprintf(message, "UNREG %s %s %s", node.netid, node.nodeIP, node.nodeTCP);
                 n=sendto(sockfd,message, strlen(message), 0, udp_serverInfo->ai_addr, udp_serverInfo->ai_addrlen); 
                 if(n==-1)
@@ -556,28 +574,51 @@ void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_liste
 
         memset(tcp_msg, 0, sizeof tcp_msg);//MEMSET TRY
 
-        sprintf(tcp_msg, "EXTERN %s %s\n", node.backup_IP, node.backup_PORT); //EXTERN IP TCP<LF> //prof
+        sprintf(tcp_msg, "EXTERN %s %s\n", node.extern_IP, node.extern_PORT); //EXTERN IP TCP<LF> //prof
         write(new_node->fd, tcp_msg, strlen(tcp_msg));//prof
     }
 }
 
-void rcv_msgFromServer(int cli_fd, char return_message[]){
-    memset(return_message, 0, sizeof return_message);//MEMSET TRY
+void rcv_msgFromServer(int cli_fd){
+    char msg_code[BUFFER_SIZE];
+    char *token;
+    memset(return_message, 0, sizeof return_message);//MEMSET TRY --ver com calma w char[]
     ssize_t n=read(cli_fd,return_message,BUFFER_SIZE);
-    if(n==-1){
+    if(n==-1 || n == 0){
         printf("Error rcving the server message\n\n");
         exit(1);
+
+        /*if((node.backup_IP != node.nodeIP) || (node.backup_PORT != node.nodeTCP)){//IF my backup is not his own node
+            node.extern_IP = node.backup_IP;
+            node.extern_PORT = node.backup_PORT;
+        }*/
+        //close(cli_fd);
     }
     else{//tudo ok
         printf("Server Message:\n %s", return_message);
+        if (sscanf(return_message, "%s", msg_code)==1){
+            if(strcmp(msg_code, "EXTERN")==0){//EXTERN IP TCP<LF>
+                token = strtok(return_message, " ");//get EXT
+                token = strtok(NULL, " ");//get0
+                sscanf(token, "%s", node.backup_IP);//save it
+
+                token = strtok(NULL, " ");//get port
+                sscanf(token, "%s", node.backup_PORT);
+            }
+        }
     }
 }
 
-void rcv_msgFromClients(int myclient_fd, char return_message[]){
+void rcv_msgFromClients(int myclient_fd){
     ssize_t n=read(myclient_fd,return_message,BUFFER_SIZE);
-    if(n==-1){
+    if(n==-1 || n == 0){
         printf("Error rcving the server message\n\n");
         exit(1);
+        
+        /*prepare_myExternExit();
+
+        close(myclient_fd);*/
+
     }
     else{//tudo ok
         printf("Client Message\n %s", return_message);
@@ -743,4 +784,27 @@ int get_ClientISSET(fd_set * rfds){
     }
 
     return -1;//if no FD did ISSET
+}
+
+void net_reroute(){
+    
+    //close sockets and update node structure 
+    if(node.nodeIP == node.backup_IP){
+        //promove qualquer um dos seus vizinhos internos a vizinho externo:
+        // - 
+        
+    }
+    else{
+        
+        
+    }
+}
+
+void prepare_myExternExit(){
+    if(!(node.nodeIP == node.backup_IP && node.nodeTCP == node.backup_PORT)){//if he's not his own backup
+
+
+
+    }
+
 }
