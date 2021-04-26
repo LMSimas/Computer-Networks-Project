@@ -7,6 +7,7 @@
  #include <errno.h>
 
 #define BUFFER_SIZE 1024
+#define NODELIST_SIZE 16
 
 
 typedef struct _node {

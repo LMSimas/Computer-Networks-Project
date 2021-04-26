@@ -10,8 +10,8 @@ enum {notreg, goingout, regwait, reg, notregwait, listwait} state;
 
 node_s node;
 int flag_list = 0;
-char TCP_IParray[5][BUFFER_SIZE];//5 for now
-char TCP_PORTarray[5][BUFFER_SIZE];
+char TCP_IParray[NODELIST_SIZE][BUFFER_SIZE];//5 for now
+char TCP_PORTarray[NODELIST_SIZE][BUFFER_SIZE];
 int TCP_NodesCounter = 0;
 
 char tcp_msg[BUFFER_SIZE];
@@ -82,7 +82,7 @@ int main (int argc, char* argv[]){
             maxfd=ser_listenfd;
             if(clientsList_head!=NULL){//if CLIENTS CONNECTED -- update maxfd and prepare clients FDSets
                 prepare_ClientFDSets(&rfds);
-                maxfd=get_ClientsMaxfd;
+                maxfd = get_ClientsMaxfd();//warning prof
             }
              break;//case reg
 
@@ -316,10 +316,15 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
         }
         else{
             printf("client successfully connected\n\n");
+
+            memset(tcp_msg, 0, sizeof tcp_msg);//MEMSET Try
             sprintf(tcp_msg, "NEW %s %s\n", node.nodeIP, node.nodeTCP); //NEW IP TCP <LF>
             write(*cli_fd, tcp_msg, strlen(tcp_msg));
 
+            memset(tcp_msg, 0, sizeof tcp_msg);
+
             read(*cli_fd, tcp_msg, BUFFER_SIZE);
+            //Strtok extern e meter no backup com strcpy(node.extern_PORT, TCP_PORTarray[random_node]);
             printf("MSG from Server\n::%s\n", tcp_msg);
         }
     }
@@ -328,6 +333,7 @@ void prepare_tcpClient(struct addrinfo *cli_hints, struct addrinfo *cli_res, int
 
 int choose_extern()
 {
+    int random_node;
     if (TCP_NodesCounter == 0)
     {
         //strcpy(node.extern_id = node.nodeid;
@@ -348,18 +354,18 @@ int choose_extern()
         strcpy(node.extern_PORT, TCP_PORTarray[0]);
 
         //strcpy(node.backup_nid = node.nodeid;
-        strcpy(node.backup_IP, TCP_IParray[0]);
-        strcpy(node.backup_PORT, TCP_PORTarray[0]);
+        strcpy(node.backup_IP, node.nodeIP);
+        strcpy(node.backup_PORT, node.nodeTCP);
 
         return(0);
     }
     else{//CHANGE THIS FOR RANDOM CONNECT
-        
-        strcpy(node.extern_IP, TCP_IParray[0]);
-        strcpy(node.extern_PORT, TCP_PORTarray[0]);
+        random_node = rand() % (TCP_NodesCounter-1);
+        strcpy(node.extern_IP, TCP_IParray[random_node]);
+        strcpy(node.extern_PORT, TCP_PORTarray[random_node]);
 
-        strcpy(node.backup_IP, TCP_IParray[0]);
-        strcpy(node.backup_PORT, TCP_PORTarray[0]);
+        /*strcpy(node.backup_IP, TCP_IParray[random_node]);
+        strcpy(node.backup_PORT, TCP_PORTarray[random_node]);*/
 
     }
     
@@ -511,7 +517,18 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
                 }
                 state=notregwait;
             }
-            else if (strcmp(command, "exit")==0) {printf("Going out.\n\n"); state=goingout;}
+            else if (strcmp(command, "exit")==0)
+            {
+                printf("Going out.\n\n");
+                state=goingout;
+            }
+            else if (strcmp(command, "st")==0) 
+            {
+                printf("External neighbour's IP - %s\n", node.extern_IP);
+                printf("External neighbour's TCP - %s\n", node.extern_PORT);
+                printf("Backup's IP - %s\n", node.backup_IP);
+                printf("Backup's TCP - %s\n", node.backup_PORT);
+            }
             //resto dos comandos possiveis
             //...
             else printf("Error: Unknown command. \n");
@@ -533,16 +550,19 @@ void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_liste
     else{
         new_node = alloc_clientNode(myclient_fd);//alloc || insert in clientsList
         clients_OnLine++;
+        memset(tcp_msg, 0, sizeof tcp_msg);
         read(new_node->fd, tcp_msg, BUFFER_SIZE);
         printf("Msg from Client\n ::%s\n", tcp_msg);
 
-        sprintf(tcp_msg, "EXTERN %s %s\n", node.backup_IP, node.backup_PORT); //EXTERN IP TCP<LF>
-        write(new_node->fd, tcp_msg, strlen(tcp_msg));
+        memset(tcp_msg, 0, sizeof tcp_msg);//MEMSET TRY
+
+        sprintf(tcp_msg, "EXTERN %s %s\n", node.backup_IP, node.backup_PORT); //EXTERN IP TCP<LF> //prof
+        write(new_node->fd, tcp_msg, strlen(tcp_msg));//prof
     }
 }
 
 void rcv_msgFromServer(int cli_fd, char return_message[]){
-    
+    memset(return_message, 0, sizeof return_message);//MEMSET TRY
     ssize_t n=read(cli_fd,return_message,BUFFER_SIZE);
     if(n==-1){
         printf("Error rcving the server message\n\n");
@@ -628,7 +648,7 @@ void rcv_nodeslist(int sockfd, char message[], struct sockaddr * server_addr, so
         {   
             token = strtok(message, "\n");//get the "NODESLIST\n"
 
-            while(token != NULL && TCP_NodesCounter<5){
+            while(token != NULL && TCP_NodesCounter<NODELIST_SIZE){
                 token = strtok(NULL, " ");//get TCP IP
                 if(token != NULL){//if we don't have any node in the list
                     sscanf(token, "%s", TCP_IParray[TCP_NodesCounter]);
