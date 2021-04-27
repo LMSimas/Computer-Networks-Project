@@ -14,6 +14,8 @@ char TCP_IParray[NODELIST_SIZE][BUFFER_SIZE];//5 for now
 char TCP_PORTarray[NODELIST_SIZE][BUFFER_SIZE];
 int TCP_NodesCounter = 0;
 
+int expTable[TABLE_SIZE] = {0};//Tabela de expedição -- contém fd associado a cada id || -1 represent 
+
 char tcp_msg[BUFFER_SIZE];
 char return_message[BUFFER_SIZE];
 
@@ -124,7 +126,6 @@ int main (int argc, char* argv[]){
                 }//else if flaglist
 
             break;//notreg
-
 
             case regwait:    //---------------------------------------------------------------------------
                 if(FD_ISSET(0,&rfds)) //from stdin
@@ -547,6 +548,13 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
                 printf("Backup's IP - %s\n", node.backup_IP);
                 printf("Backup's TCP - %s\n", node.backup_PORT);
             }
+            else if (strcmp(command, "sr")==0) 
+            {
+                for(int i = 0; i < TABLE_SIZE; i++){
+                    if(expTable[i]!=0)
+                        printf("Node %d - %d\n", i, expTable[i]);
+                } 
+            }
             //resto dos comandos possiveis
             //...
             else printf("Error: Unknown command. \n");
@@ -559,6 +567,10 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
 void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_listenfd){
     clientNode *new_node = NULL;
     socklen_t addrlen = sizeof(myclient_addr);
+    char* token = NULL;
+    int advertise_id = -1;
+    int n_written;
+    char msg_code[BUFFER_SIZE];
 
     if((myclient_fd=accept(ser_listenfd, myclient_addr, &addrlen))==-1)//accept the new client
     {
@@ -569,19 +581,58 @@ void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_liste
         new_node = alloc_clientNode(myclient_fd);//alloc || insert in clientsList
         clients_OnLine++;
         memset(tcp_msg, 0, sizeof tcp_msg);
-        read(new_node->fd, tcp_msg, BUFFER_SIZE);
+        read(new_node->fd, tcp_msg, BUFFER_SIZE);//rcv NEW IP TCP<LF>
         printf("Msg from Client\n ::%s\n", tcp_msg);
 
-        memset(tcp_msg, 0, sizeof tcp_msg);//MEMSET TRY
+        //TO DO -- Verify if the msg is NEW IP TCP<LF>
 
+
+        memset(tcp_msg, 0, sizeof tcp_msg);//MEMSET TRY
         sprintf(tcp_msg, "EXTERN %s %s\n", node.extern_IP, node.extern_PORT); //EXTERN IP TCP<LF> //prof
         write(new_node->fd, tcp_msg, strlen(tcp_msg));//prof
+
+        //RCV new node ADVERTISE
+        memset(tcp_msg, 0, sizeof tcp_msg);
+        read(new_node->fd, tcp_msg, BUFFER_SIZE);
+        if (sscanf(tcp_msg, "%s", msg_code)==1){
+            if(strcmp(msg_code, "ADVERTISE") == 0){//ADVERTISE id<LF>
+                    token = strtok(tcp_msg, " ");//get ADVERTISE
+                    token = strtok(NULL, " ");//get id || nsure if " " or "\n"
+                    advertise_id = atoi(token);
+                    expTable[advertise_id] = myclient_fd;
+            }
+            else{
+                printf("Invalid New_Node Advertise Msg\n\n");
+            }
+        }
+        memset(tcp_msg, 0, sizeof tcp_msg);
+        
+        sprintf(tcp_msg, "ADVERTISE %s\0", node.nodeid);
+        n_written=write(new_node->fd, tcp_msg, strlen(tcp_msg));
+        if(n_written <= 0){
+            printf("Error writing advertise b4 for loop\n");
+        }
+        printf("New Client Advertised:: %s\n", tcp_msg);
+
+
+        for(int i = 0; i < TABLE_SIZE; i++){
+            if(expTable[i] != 0){//if not empty
+                memset(tcp_msg, 0, sizeof tcp_msg);
+                sprintf(tcp_msg, "ADVERTISE %d\0", i);//%d works(?)
+                write(new_node->fd, tcp_msg, strlen(tcp_msg));
+            }  
+        }
+
+
     }
 }
 
 void rcv_msgFromServer(int cli_fd){
     char msg_code[BUFFER_SIZE];
+    char id_char[BUFFER_SIZE];
     char *token;
+    int advertise_id = -1;
+
     memset(return_message, 0, sizeof return_message);//MEMSET TRY --ver com calma w char[]
     ssize_t n=read(cli_fd,return_message,BUFFER_SIZE);
     if(n==-1 || n == 0){
@@ -604,6 +655,20 @@ void rcv_msgFromServer(int cli_fd){
 
                 token = strtok(NULL, " ");//get port
                 sscanf(token, "%s", node.backup_PORT);
+
+                memset(tcp_msg, 0, strlen(tcp_msg));
+                sprintf(tcp_msg, "ADVERTISE %s", node.nodeid);
+                write(cli_fd, tcp_msg, strlen(tcp_msg));
+            }
+            else if(strcmp(msg_code, "ADVERTISE") == 0){//ADVERTISE id<LF>
+                token = strtok(return_message, " ");//get ADVERTISE
+                token = strtok(NULL, "\n");//get id || nsure if " " or "\n"
+                memset(id_char, 0, sizeof(id_char));
+                sscanf(token,"%s", id_char);
+                if(strcmp(id_char, node.nodeid)  != 0){ //if the advertised one is not him
+                    advertise_id = atoi(token);
+                    expTable[advertise_id] = cli_fd;
+                }
             }
         }
     }

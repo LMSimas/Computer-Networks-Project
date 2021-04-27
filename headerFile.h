@@ -4,10 +4,12 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netdb.h>
- #include <errno.h>
+#include <errno.h>
+#include <signal.h>
 
 #define BUFFER_SIZE 1024
 #define NODELIST_SIZE 16
+#define TABLE_SIZE 50
 
 
 typedef struct _node {
