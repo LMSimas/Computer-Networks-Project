@@ -43,7 +43,7 @@ int main (int argc, char* argv[]){
     /*TCP CLIENT VARIABLES*/
     struct addrinfo cli_hints;
     struct addrinfo *cli_res;
-    int cli_fd;
+    int cli_fd =-1;
 
     /*TCP SERVER VARIABLES*/
     struct addrinfo ser_hints;
@@ -82,13 +82,15 @@ int main (int argc, char* argv[]){
             case notreg:     FD_SET(0, &rfds); maxfd=0; break;
             case regwait:    FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
 
-            case reg:        FD_SET(0, &rfds); FD_SET(cli_fd, &rfds); FD_SET(ser_listenfd, &rfds);//prepare server, listen & stdin FD
-            maxfd=ser_listenfd;
-            if(clientsList_head!=NULL){//if CLIENTS CONNECTED -- update maxfd and prepare clients FDSets
-                prepare_ClientFDSets(&rfds);
-                maxfd = get_ClientsMaxfd();//warning prof
-            }
-             break;//case reg
+            case reg:        FD_SET(0, &rfds);  FD_SET(ser_listenfd, &rfds);//prepare server, listen & stdin FD
+                maxfd=ser_listenfd;
+                if(clientsList_head!=NULL){//if CLIENTS CONNECTED -- update maxfd and prepare clients FDSets
+                    prepare_ClientFDSets(&rfds);
+                    maxfd = get_ClientsMaxfd();//warning prof
+                }
+                if(cli_fd!=-1) FD_SET(cli_fd, &rfds);
+
+                break;//case reg
 
             case notregwait: FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
             case listwait:   FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
@@ -626,23 +628,23 @@ void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_liste
 
         //Advertise each table element to new client
         for(int i = 0; i < TABLE_SIZE; i++){
-            if(expTable[i] != 0){//if not empty
+            if(expTable[i] != 0 && i != advertise_id){//if not empty
                 memset(tcp_msg, 0, sizeof tcp_msg);
                 sprintf(tcp_msg, "ADVERTISE %d\n", i);//%d works(?)
                 write(new_node->fd, tcp_msg, strlen(tcp_msg));
             }  
         }
-        //Advertise to external neighbour
-        if (cli_fd!=0)
+        printf("CLIFD - %d\n", cli_fd);
+        //Advertise to external neighbour is there is one 
+        if (cli_fd!=-1)
         {
             //printf("CLIFD - %d\n", cli_fd);
             memset(tcp_msg, 0, sizeof tcp_msg);
             sprintf(tcp_msg, "ADVERTISE %d\n", advertise_id);
             n_written=write(cli_fd, tcp_msg, strlen(tcp_msg));
             if(n_written <= 0){
-            printf("Error wrting advertise\n");
+                printf("Error wrting advertise\n");
              }
-
         }
     }
 }
@@ -699,7 +701,8 @@ void rcv_msgFromServer(int cli_fd){
     }
 }
 
-void rcv_msgFromClients(int myclient_fd){
+void rcv_msgFromClients(int myclient_fd, int cli_fd){
+    clientNode *aux = clientsList_head; //ESTA INCIALIZADO MAS FALTA COPIAR O CODIGO LA DE CIMA PARA ENVIAR PARA OS OUTROS CLIENTES
     char * token=NULL;
     int advertise_id= -1;
     char msg_code[BUFFER_SIZE];
@@ -708,11 +711,9 @@ void rcv_msgFromClients(int myclient_fd){
     if(n==-1 || n == 0){
         printf("Error rcving the server message\n\n");
         exit(1);
-        
         /*prepare_myExternExit();
 
         close(myclient_fd);*/
-
     }
     else{//tudo ok
         printf("Client Message\n %s", return_message);
@@ -730,9 +731,19 @@ void rcv_msgFromClients(int myclient_fd){
                     if(token!=NULL)
                         token = strtok(NULL, " ");//get ADVERTISE
                 }
+
+                //Advertise to external neighbour is there is one 
+                if (cli_fd!=-1)
+                {
+                    //printf("CLIFD - %d\n", cli_fd);
+                    memset(tcp_msg, 0, sizeof tcp_msg);
+                    sprintf(tcp_msg, "ADVERTISE %d\n", advertise_id);
+                    int n_written=write(cli_fd, tcp_msg, strlen(tcp_msg));
+                    if(n_written <= 0){
+                        printf("Error wrting advertise\n");
+                    }
+                }
             }
-
-
         }
 
     }
