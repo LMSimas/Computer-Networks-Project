@@ -13,6 +13,7 @@ int flag_list = 0;
 char TCP_IParray[NODELIST_SIZE][BUFFER_SIZE];//5 for now
 char TCP_PORTarray[NODELIST_SIZE][BUFFER_SIZE];
 int TCP_NodesCounter = 0;
+int join_connection = -1;
 
 int expTable[TABLE_SIZE] = {0};//Tabela de expedição -- contém fd associado a cada id || -1 represent 
 
@@ -39,7 +40,8 @@ int main (int argc, char* argv[]){
     char *token = NULL;
 
     fd_set rfds;
-    int maxfd, counter, sockfd;
+    int maxfd, counter;
+    int sockfd = -1;
     int target_fd;
 
     /*UDP SERVER VARIABLES*/
@@ -129,7 +131,7 @@ int main (int argc, char* argv[]){
                 if(FD_ISSET(0,&rfds) && !flag_list) //stdin
                 {
                     FD_CLR(0,&rfds);
-                    notreg_stdinCommands(buffer, command, message, sockfd, udp_serverInfo, &cli_hints, cli_res, &cli_fd);
+                    notreg_stdinCommands(buffer, command, message, sockfd, udp_serverInfo, &cli_hints, cli_res, &cli_fd, &ser_hints, ser_res, &ser_listenfd);
                 }//stdin
 
                 if (flag_list) {     //segunda vez que entra neste estado ja c a lista
@@ -156,7 +158,7 @@ int main (int argc, char* argv[]){
                 if(FD_ISSET(0,&rfds)) //stdin
                 {
                     FD_CLR(0,&rfds);
-                    reg_stdinCommands(buffer, command, message, sockfd, udp_serverInfo, cli_fd, ser_listenfd);
+                    reg_stdinCommands(command, message, sockfd, udp_serverInfo, cli_fd, ser_listenfd);
                 }//stdin
 
                 /******* SERVER recebe NEW CLIENT ******/
@@ -416,19 +418,19 @@ void print_TCParray(){
     }
 }
 
-void notreg_stdinCommands(char buffer[], char command[], char message[], int sockfd, struct addrinfo * udp_serverInfo,struct addrinfo *cli_hints, struct addrinfo *cli_res, int* cli_fd){
+void notreg_stdinCommands(char buffer[], char command[], char message[], int sockfd, struct addrinfo * udp_serverInfo,struct addrinfo *cli_hints, struct addrinfo *cli_res, int* cli_fd,
+struct addrinfo * ser_hints, struct addrinfo * ser_res, int * ser_listenfd){
     ssize_t n;
 
-    //notreg_stdinCommands(buffer, command, message, sockfd, &state)
     if (fgets(buffer, BUFFER_SIZE, stdin)!=NULL) 
     {
-        
         if(sscanf(buffer, "%s", command)==1)
         {
             if(strcmp(command, "join")==0) 
             {
                 printf("Command: join \n");
                 if(sscanf(buffer, "%*s%s%s%s%s", node.netid, node.nodeid, node.extern_IP, node.extern_PORT)==2){//if join net id
+                    join_connection = 1;
                     if(!flag_list){ 
                     //new
                     sprintf(message, "NODES %s", node.netid);
@@ -442,21 +444,23 @@ void notreg_stdinCommands(char buffer[], char command[], char message[], int soc
                     }
                 }
                 else if(sscanf(buffer, "%*s%s%s%s%s", node.netid, node.nodeid, node.extern_IP, node.extern_PORT)==4){//join net id bootIP bootTCP
+                    join_connection = 2;
                     flag_ex=1;//do not assign his extern
                     prepare_tcpClient(cli_hints, cli_res, cli_fd);
+                    prepare_tcpServer(ser_hints, ser_res, ser_listenfd);
                     state=reg;
                 }
                 else{
-                    printf("Missing join arguments. Options::\n join net id\njoin net id bootIP bootTCP\n");
+                    printf("Missing join arguments. Options::\njoin net id\njoin net id bootIP bootTCP\n");
                 }
-
 
                 //resto das operacoes necessarias
             }
             else if (strcmp(command, "leave")==0) printf("Makes no sense to leave before joining \n");
-            else if (strcmp(command, "exit")==0) {printf("Going out.\n\n"); state=goingout;}
-            //resto dos comandos possiveis
-            //...
+            else if (strcmp(command, "exit")==0) {
+                printf("Going out.\n\n");
+                state=goingout;
+                }
             else printf("Error: Unknown command. \n");
         }//if command                    
     }//fgets
@@ -522,8 +526,10 @@ struct addrinfo * ser_res, int * ser_listenfd){
     } //esta registado
 }
 
-void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo, int cli_fd, int ser_listenfd){
+void reg_stdinCommands(char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo, int cli_fd, int ser_listenfd){
     ssize_t n;
+    char buffer[BUFFER_SIZE];
+    memset(buffer, 0, sizeof buffer);
 
     if (fgets(buffer, BUFFER_SIZE, stdin)!=NULL) 
     {
@@ -541,14 +547,25 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
                 }
                 close(ser_listenfd);
                 
-                sprintf(message, "UNREG %s %s %s", node.netid, node.nodeIP, node.nodeTCP);
-                n=sendto(sockfd,message, strlen(message), 0, udp_serverInfo->ai_addr, udp_serverInfo->ai_addrlen); 
-                if(n==-1)
-                {
-                    printf("Error: Unexpected sendto\n");
-                    exit(1);
+                if(join_connection == 1){//if I HAVE UDP SOCKET, unreg from the udp server
+                    sprintf(message, "UNREG %s %s %s", node.netid, node.nodeIP, node.nodeTCP);
+                    n=sendto(sockfd,message, strlen(message), 0, udp_serverInfo->ai_addr, udp_serverInfo->ai_addrlen); 
+                    if(n==-1)
+                    {
+                        printf("Error: Unexpected sendto\n");
+                        exit(1);
+                    }
+                    join_connection = -1;
+                    state=notregwait;
+                    clean_arrayNodesList();
+                    flag_ex = 0;
                 }
-                state=notregwait;
+                else if (join_connection == 2){
+                    join_connection = -1;
+                    flag_ex = 0;
+                    state=notreg;//go to notreg state
+                }
+
             }
             else if (strcmp(command, "exit")==0)
             {
@@ -671,7 +688,7 @@ void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_liste
 
 void rcv_msgFromServer(int *cli_fd, struct addrinfo *cli_hints, struct addrinfo *cli_res){  //CLI_FD TALVEZ TENHA QUE SER COM &
     char msg_code[BUFFER_SIZE];
-    char id_char[BUFFER_SIZE];
+    char id_char[NODE_BUFFSIZE];
 
     char *token;
     char *token1;
@@ -831,7 +848,7 @@ void rcv_msgFromClients(int myclient_fd, int cli_fd){
     int withdraw_id= -1;
 
     char msg_code[BUFFER_SIZE];
-    char id_char[BUFFER_SIZE];
+    char id_char[NODE_BUFFSIZE];
     char auxBuffer[BUFFER_SIZE];
     memset(auxBuffer, 0, sizeof (auxBuffer));
     char writeBuffer[BUFFER_SIZE];
@@ -844,12 +861,20 @@ void rcv_msgFromClients(int myclient_fd, int cli_fd){
     if(n==-1 || n == 0){
         printf("My inner node left\n");
 
-
-        //VER CASO 2 baze e 1 fique (extern do 1)
+        //remove and withdraw
         rmvNode_clientsList(myclient_fd);
         clients_OnLine--;
         clean_expTable2(myclient_fd, cli_fd);//percorrer tabela, achar ID desse FD, enviar withdraw a todos os seu clientes && //withdraw my server
 
+        //VER CASO 2 baze e 1 fique (extern do 1)
+        if (strcmp(node.backup_IP,node.nodeIP) == 0 || strcmp(node.backup_PORT,node.nodeTCP) == 0){//if this node IS his own backup
+            if(clients_OnLine > 0){//if I still have clients
+                extern_randomClient();
+                memset(node.backup_IP, 0, sizeof (node.backup_IP));
+                memset(node.backup_PORT, 0, sizeof(node.backup_PORT));
+            }
+
+        }
         if(clients_OnLine == 0 && cli_fd == -1){//if no more clients and servers available
             strcpy(node.extern_IP, node.nodeIP);
             strcpy(node.extern_PORT, node.nodeTCP);
@@ -986,6 +1011,7 @@ void listwait_stdinCommands(char buffer[], char command[]){
 
 void rcv_nodeslist(int sockfd, char message[], struct sockaddr * server_addr, socklen_t * addrlen, char message1[], char* token){
     ssize_t n = recvfrom(sockfd, message, BUFFER_SIZE-1, 0, server_addr, addrlen); 
+    TCP_NodesCounter = 0;
     if(n==-1)
     {
         printf("Error: Unexpected recvfrom\n");
@@ -1094,28 +1120,6 @@ int get_ClientISSET(fd_set * rfds){
     }
 
     return -1;//if no FD did ISSET
-}
-
-void net_reroute(){
-    
-    //close sockets and update node structure 
-    if(node.nodeIP == node.backup_IP){
-        //promove qualquer um dos seus vizinhos internos a vizinho externo:
-        // - 
-        
-    }
-    else{
-        
-        
-    }
-}
-
-void prepare_myExternExit(){
-    if(!(strcmp(node.nodeIP, node.backup_IP) && node.nodeTCP == node.backup_PORT)){//if he's not his own backup
-
-    }
-    
-
 }
 
 void send_ToMyClients(int adver_id, int font_fd, int op){//font_fd(-1) -- send 2 all clients || font_fd(!=-1) -- send to all client except the font_fd 
@@ -1233,7 +1237,11 @@ int get_idFromExpTable(int my_client_fd){
 
 void extern_randomClient(){
     clientNode * aux = clientsList_head; //get the head of the list
-    int random_number = rand() % (clients_OnLine-1);
+    int random_number = 0;
+    if(clients_OnLine > 1){
+        random_number = rand() % (clients_OnLine-1);
+    }
+
     int iterator = 0;
     char writeBuffer[BUFFER_SIZE];
 
@@ -1311,4 +1319,11 @@ void rmvNode_clientsList(int left_node){//close fd and free clientnode
         aux=aux->next;
     }
 
+}
+
+void clean_arrayNodesList(){ //clean all the TCP_NODES ARRAY
+    for(int i = 0; i < NODELIST_SIZE; i++){
+        memset(TCP_IParray[i], 0, sizeof TCP_IParray[i]);
+        memset(TCP_PORTarray[i], 0, sizeof TCP_PORTarray[i]);
+    }
 }

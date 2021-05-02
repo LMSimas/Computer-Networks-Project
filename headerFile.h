@@ -10,22 +10,23 @@
 #define BUFFER_SIZE 1024
 #define NODELIST_SIZE 16
 #define TABLE_SIZE 50
+#define NODE_BUFFSIZE 300
 
 
 typedef struct _node {
     char netid [BUFFER_SIZE];
     
-    char nodeid [BUFFER_SIZE];
-    char nodeIP[BUFFER_SIZE];
-    char nodeTCP[BUFFER_SIZE];
+    char nodeid [NODE_BUFFSIZE];
+    char nodeIP[NODE_BUFFSIZE];
+    char nodeTCP[NODE_BUFFSIZE];
 
-    char extern_id [BUFFER_SIZE];
-    char extern_IP [BUFFER_SIZE];
-    char extern_PORT [BUFFER_SIZE];
+    char extern_id [NODE_BUFFSIZE];
+    char extern_IP [NODE_BUFFSIZE];
+    char extern_PORT [NODE_BUFFSIZE];
 
-    char backup_id [BUFFER_SIZE];
-    char backup_IP [BUFFER_SIZE];
-    char backup_PORT [BUFFER_SIZE];
+    char backup_id [NODE_BUFFSIZE];
+    char backup_IP [NODE_BUFFSIZE];
+    char backup_PORT [NODE_BUFFSIZE];
 } node_s;
 
 typedef struct _clientNode{
@@ -61,9 +62,10 @@ void rcv_OkUnreg(int sockfd, char message[], struct sockaddr * server_addr, sock
 void rcv_nodeslist(int sockfd, char message[], struct sockaddr * server_addr, socklen_t * addrlen, char message1[], char* token);
 
 /*COMMANDS*/
-void notreg_stdinCommands(char buffer[], char command[], char message[], int sockfd, struct addrinfo * udp_serverInfo, struct addrinfo *cli_hints, struct addrinfo *cli_res, int *cli_fd);
+void notreg_stdinCommands(char buffer[], char command[], char message[], int sockfd, struct addrinfo * udp_serverInfo, struct addrinfo *cli_hints, struct addrinfo *cli_res, int *cli_fd,
+struct addrinfo * ser_hints, struct addrinfo * ser_res, int * ser_listenfd);
 void regwait_stdinCommands(char buffer[], char command[]);
-void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo, int cli_fd, int ser_listenfd);
+void reg_stdinCommands(char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo, int cli_fd, int ser_listenfd);
 void notregwait_stdinCommands(char buffer[], char command[]);
 void listwait_stdinCommands(char buffer[], char command[]);
 
@@ -88,3 +90,5 @@ void clean_expTable(int left_fd);
 void clean_expTable2(int left_fd, int cli_fd);
 void rmvNode_clientsList(int left_node);
 void rmvNode_clientsList(int myclient_fd);
+
+void clean_arrayNodesList();
