@@ -8,7 +8,6 @@
 
 /************** VARIÁVEIS GLOBAIS **************/
 enum {notreg, goingout, regwait, reg, notregwait, listwait} state;
-
 node_s node;
 int flag_list = 0;
 char TCP_IParray[NODELIST_SIZE][BUFFER_SIZE];//5 for now
@@ -34,10 +33,10 @@ int im_alone = 0;
 
 /***************** MAIN *****************/
 int main (int argc, char* argv[]){
-    char buffer[BUFFER_SIZE], netid[BUFFER_SIZE], nodeid[BUFFER_SIZE], message1[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE], message1[BUFFER_SIZE];
     char message[BUFFER_SIZE];
     char command[BUFFER_SIZE];
-    char *token;
+    char *token = NULL;
 
     fd_set rfds;
     int maxfd, counter, sockfd;
@@ -45,22 +44,19 @@ int main (int argc, char* argv[]){
 
     /*UDP SERVER VARIABLES*/
     struct addrinfo udp_hints, *udp_serverInfo; //for udp server comms
-    int fd,errcode;                      //for udp server comms
-    ssize_t n;
     struct sockaddr server_addr;
     socklen_t addrlen;
 
     /*TCP CLIENT VARIABLES*/
     struct addrinfo cli_hints;
-    struct addrinfo *cli_res;
+    struct addrinfo *cli_res = NULL;
     int cli_fd =-1;
 
     /*TCP SERVER VARIABLES*/
     struct addrinfo ser_hints;
-    struct addrinfo *ser_res;
+    struct addrinfo *ser_res = NULL;
     int ser_listenfd;
-    int ser_acceptfd;
-    int myclient_fd;
+    int myclient_fd = -1;
     struct sockaddr myclient_addr;
 
     /*****************************/
@@ -459,7 +455,10 @@ void notreg_stdinCommands(char buffer[], char command[], char message[], int soc
         }//if command                    
     }//fgets
 
-    if(state!=goingout && flag_list==0)printf("ndn> "); fflush(stdout); //prompt
+    if(state!=goingout && flag_list==0){
+        printf("ndn> ");
+        fflush(stdout); //prompt
+    }
 }
 
 void udp_regRequest(char message[], struct addrinfo * udp_serverInfo, int sockfd){
@@ -490,7 +489,10 @@ void regwait_stdinCommands(char buffer[], char command[]){
             else printf("Error: Unknown command. \n");
         }//if commands
     }
-    if(state!=goingout)printf("ndn> "); fflush(stdout); //prompt
+    if(state!=goingout){
+        printf("ndn> ");
+        fflush(stdout); //prompt
+    }
 }
 
 void rcv_OkReg(int sockfd, char message[], struct sockaddr * server_addr, socklen_t * addrlen, struct addrinfo * ser_hints,
@@ -516,8 +518,7 @@ struct addrinfo * ser_res, int * ser_listenfd){
 
 void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd, struct addrinfo * udp_serverInfo, int cli_fd, int ser_listenfd){
     ssize_t n;
-    clientNode* aux = clientsList_head;//aponta pro inicio da lista dos clients
-    clientNode* free_aux = aux;
+
     if (fgets(buffer, BUFFER_SIZE, stdin)!=NULL) 
     {
         if(sscanf(buffer, "%s", command)==1)
@@ -529,7 +530,9 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
                 closenFree_clientsList();
 
                 //close remaining TCP connections 
-                close(cli_fd);//extern connection
+                if(cli_fd != -1){
+                    close(cli_fd);//extern connection
+                }
                 close(ser_listenfd);
                 
                 sprintf(message, "UNREG %s %s %s", node.netid, node.nodeIP, node.nodeTCP);
@@ -565,7 +568,10 @@ void reg_stdinCommands(char buffer[], char command[], char message[],int sockfd,
             else printf("Error: Unknown command. \n");
         }//if command
     }
-    if(state!=goingout)printf("ndn> "); fflush(stdout); //prompt
+    if(state!=goingout){
+        printf("ndn> ");
+        fflush(stdout); //prompt
+    }
 }
 
 void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_listenfd, int* cli_fd, struct addrinfo *cli_hints, struct addrinfo *cli_res){
@@ -573,11 +579,10 @@ void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_liste
     socklen_t addrlen = sizeof(myclient_addr);
     char writeBuffer [BUFFER_SIZE];
     memset(writeBuffer,0, sizeof writeBuffer);
-    char* token = NULL;
+    char* token;
     char* token1 = NULL;
     char* token2 = NULL;
 
-    int advertise_id = -1;
     int n_written;
     char msg_code[BUFFER_SIZE];
     memset(msg_code, 0, sizeof (msg_code));
@@ -585,8 +590,7 @@ void rcv_newCLient(struct sockaddr *myclient_addr,int myclient_fd, int ser_liste
     memset(auxIP, 0, sizeof (auxIP));
     char auxPORT[BUFFER_SIZE];
     memset(auxPORT, 0, sizeof (auxPORT));
-    clientNode *aux = clientsList_head;
-    int op;
+
 
     //Accept the new client
     if((myclient_fd=accept(ser_listenfd, myclient_addr, &addrlen))==-1)
@@ -706,8 +710,9 @@ void rcv_msgFromServer(int *cli_fd, struct addrinfo *cli_hints, struct addrinfo 
                 extern_randomClient(); //escolhe 1 dos seus clientes e preenche o seu node.extern
                 memset(node.backup_IP, 0, sizeof (node.backup_IP));
                 memset(node.backup_PORT, 0, sizeof(node.backup_PORT));
-                flag_ex = 1; //do not change my extern in tcpClient
-                prepare_tcpClient(cli_hints, cli_res, cli_fd);
+                //flag_ex = 1; //do not change my extern in tcpClient
+                //prepare_tcpClient(cli_hints, cli_res, cli_fd);//fzr new invés
+
             }
             else{ //no clients available --> meter o seu extern e backup a seu próprio
                 strcpy(node.extern_IP, node.nodeIP);
@@ -736,17 +741,18 @@ void rcv_msgFromServer(int *cli_fd, struct addrinfo *cli_hints, struct addrinfo 
                 if (clientsList_head!=NULL && (strcmp(token1, node.backup_IP)!=0) && (strcmp(token2, node.backup_PORT)!=0)){//se tiver clientes
                     send_ToMyClients(0, -1, 2); //if it has clients propagates his EXTERN to them
                 }
+                else{
+                    //Advertise itself to external neighbour aka server node
+                    memset(writeBuffer, 0, sizeof(writeBuffer));
+                    sprintf(writeBuffer, "ADVERTISE %s\n", node.nodeid);
+                    write(*cli_fd, writeBuffer, strlen(writeBuffer));
+                    printf("sent to myserver::%s\n", writeBuffer);
+                }
                 
                 sscanf(token1, "%s", node.backup_IP);//save it
                 sscanf(token2, "%s", node.backup_PORT);//save it
 
                 memcpy(auxBuffer, &auxBuffer[msg_len], (BUFFER_SIZE - msg_len)*sizeof(char));//SHIFT auxBUFFER
-
-                //Advertise itself to external neighbour aka server node
-                memset(writeBuffer, 0, sizeof(writeBuffer));
-                sprintf(writeBuffer, "ADVERTISE %s\n", node.nodeid);
-                write(*cli_fd, writeBuffer, strlen(writeBuffer));
-                printf("sent to myserver::%s\n", writeBuffer);
 
             }
             else if(strcmp(msg_code, "ADVERTISE") == 0){//ADVERTISE id<LF>
@@ -787,21 +793,36 @@ void rcv_msgFromServer(int *cli_fd, struct addrinfo *cli_hints, struct addrinfo 
 
                 memcpy(auxBuffer, &auxBuffer[msg_len], (BUFFER_SIZE - msg_len)*sizeof(char));//SHIFT auxBUFFER
             }
+            else if(strcmp(msg_code, "NEW") == 0){ // NEW IP PORT<LF>
+                msg_len = 0;
+                
+                token = strtok(auxBuffer, " ");//get NEW
+                msg_len += strlen(token)+1;
+
+                token1 = strtok(NULL, " ");//get IP
+                msg_len += strlen(token1)+1;
+
+                token2 = strtok(NULL, "\n");//get PORT
+                msg_len += strlen(token2)+1;
+
+                memset(writeBuffer, 0, sizeof(writeBuffer));
+                sprintf(writeBuffer, "EXTERN %s %s\n", node.extern_IP, node.extern_PORT);
+                write(*cli_fd, writeBuffer, strlen(writeBuffer));
+                printf("sent to myserver::%s\n", writeBuffer);
+
+                memcpy(auxBuffer, &auxBuffer[msg_len], (BUFFER_SIZE - msg_len)*sizeof(char));//SHIFT auxBUFFER
+            }
         }
     }
     memset(serverMessageBuffer, 0, sizeof (serverMessageBuffer));
 }
 
 void rcv_msgFromClients(int myclient_fd, int cli_fd){
-    clientNode *aux = clientsList_head; 
-    clientNode *myclient = NULL;
-
-    char * token=NULL;
+    char *token = NULL;
+    char *token1 = NULL;
+    char *token2 = NULL;
     int advertise_id= -1;
     int withdraw_id= -1;
-    int left_nodeID = -1;
-
-    int op=0; //distinguishes between ADVERTISE(1), WITHDRAW(-1) etc
 
     char msg_code[BUFFER_SIZE];
     char id_char[BUFFER_SIZE];
@@ -811,10 +832,6 @@ void rcv_msgFromClients(int myclient_fd, int cli_fd){
     memset(writeBuffer, 0, sizeof(writeBuffer));
     int msg_len = 0;
     
-    //myclient = getClientBuffer(myclient_fd);
-    //if(myclient==NULL) printf("Error: No client structure found\n");
-
-
     ssize_t n=read(myclient_fd,auxBuffer, BUFFER_SIZE-1);
     //auxBuffer[BUFFER_SIZE-1] = '\0';
 
@@ -884,6 +901,27 @@ void rcv_msgFromClients(int myclient_fd, int cli_fd){
 
                 memcpy(auxBuffer, &auxBuffer[msg_len], (BUFFER_SIZE - msg_len)*sizeof(char));//SHIFT auxBUFFER
             }
+            else if(strcmp(msg_code, "EXTERN") == 0){// EXTERN IP TCP<LF>
+                msg_len = 0;
+
+                token = strtok(auxBuffer, " ");//get EXTERN
+                msg_len += strlen(token)+1;
+
+                token1 = strtok(NULL, " ");//get IP
+                msg_len += strlen(token1)+1;
+
+                token2 = strtok(NULL, "\n");//get PORT
+                msg_len += strlen(token2)+1;
+
+                //LEAVE Case -- it has clients and the backup is not up to date
+                if (clientsList_head!=NULL && (strcmp(token1, node.backup_IP)!=0) && (strcmp(token2, node.backup_PORT)!=0)){//se tiver clientes
+                    send_ToMyClients(0, -1, 2); //if it has clients propagates his EXTERN to them
+                }
+                //update backup
+                sscanf(token1, "%s", node.backup_IP);//save it
+                sscanf(token2, "%s", node.backup_PORT);//save it
+                memcpy(auxBuffer, &auxBuffer[msg_len], (BUFFER_SIZE - msg_len)*sizeof(char));//SHIFT auxBUFFER
+            }
         }
     }
 }
@@ -901,7 +939,10 @@ void notregwait_stdinCommands(char buffer[], char command[]){
             else printf("Error: Unknown command. \n");
         }//if commands
     }
-    if(state!=goingout)printf("ndn> "); fflush(stdout); //prompt
+    if(state!=goingout){
+        printf("ndn> ");
+        fflush(stdout); //prompt
+    }
 }
 
 void rcv_OkUnreg(int sockfd, char message[], struct sockaddr * server_addr, socklen_t * addrlen){
@@ -1122,11 +1163,24 @@ void send_ToMyClients(int adver_id, int font_fd, int op){//font_fd(-1) -- send 2
     }
 
     else if (op==2){ //EXTERN
-        while(aux!=NULL){
-            memset(msg_buffer, 0, sizeof msg_buffer);
-            sprintf(msg_buffer, "EXTERN %s %s\n", node.extern_IP, node.extern_PORT);
-            write(aux->fd, msg_buffer, strlen(msg_buffer));
-            aux=aux->next;
+        if(font_fd == -1){
+            printf("mandou ext para os restantes clientes\n");
+            while(aux!=NULL){
+                memset(msg_buffer, 0, sizeof msg_buffer);
+                sprintf(msg_buffer, "EXTERN %s %s\n", node.extern_IP, node.extern_PORT);
+                write(aux->fd, msg_buffer, strlen(msg_buffer));
+                aux=aux->next;
+            }
+        }
+        else{//if we do not want to send to the font_fd node
+            while(aux!=NULL){
+                if(aux->fd != font_fd){
+                    memset(msg_buffer, 0, sizeof msg_buffer);
+                    sprintf(msg_buffer, "EXTERN %s %s\n", node.extern_IP, node.extern_PORT);
+                    write(aux->fd, msg_buffer, strlen(msg_buffer));
+                }
+                aux=aux->next;
+            }
         }
     }   
 }
@@ -1149,14 +1203,15 @@ void closenFree_clientsList(){
 
     while (aux!=NULL){
         close(aux->fd);
-        if(aux->next != NULL){//if not the first node
+        if(aux->next != NULL){//if not the last node
             free_aux = aux;
             aux = aux->next;//avança prox nó
             free(free_aux);
         }
-        else if (aux->next == NULL){//if the 1st node
+        else if (aux->next == NULL){//if the last node
+            free_aux = aux;
             aux = aux->next;
-            free(clientsList_head);//free the 1st node
+            free(free_aux);//free the last node
         }
     }
 }
@@ -1174,56 +1229,20 @@ void extern_randomClient(){
     clientNode * aux = clientsList_head; //get the head of the list
     int random_number = rand() % (clients_OnLine-1);
     int iterator = 0;
+    char writeBuffer[BUFFER_SIZE];
 
     while(aux != NULL){
         if(iterator == random_number){
             strcpy(node.extern_IP, aux->ip);
             strcpy(node.extern_PORT, aux->tcp);
             printf("new random extern assigned:: %s %s\n", node.extern_IP, node.extern_PORT);
+            memset(writeBuffer, 0, sizeof(writeBuffer));
+            sprintf(writeBuffer, "NEW %s %s\n", node.nodeIP, node.nodeTCP);
+            write(aux->fd, writeBuffer, strlen(writeBuffer));
+            printf("sent to myclient::%s\n", writeBuffer);
         }
         iterator++;
         aux=aux->next;
-    }
-}
-
-void rmv_thisClient_fromtheList(int rmv_fd){
-    clientNode * aux = clientsList_head;
-    clientNode * free_aux = aux;
-    int iterator = 0;
-
-    while(aux!=NULL){
-        if(aux->fd == rmv_fd){
-            free_aux = aux;
-            aux=aux->next;
-            iterator++;
-            close(free_aux->fd);
-            free(free_aux);
-            if(iterator == 1)//if the 1st node was rmved, update the clientList_head
-                clientsList_head = aux;
-        }
-        else{
-            aux=aux->next;
-            iterator++;
-        }
-    }
-}
-
-void compare_externBackupNodes(int left_nodeID){
-    clientNode * aux = clientsList_head;
-
-    while(aux!=NULL){
-        if(aux->fd == expTable[left_nodeID]){//find the left IP and PORT
-            break;
-        }
-    aux=aux->next;
-    }
-    //aux has the left_node
-
-    if( (strcmp(node.extern_IP,aux->ip)==0) && (strcmp(node.extern_PORT, aux->tcp)==0) ){//if he IS my EXTERN
-        //clean the extern and wait for the NEW
-        memset(node.extern_IP, 0, sizeof node.extern_IP);
-        memset(node.extern_PORT, 0, sizeof node.extern_PORT);
-        memset(node.extern_id, 0, sizeof node.extern_id);
     }
 }
 
