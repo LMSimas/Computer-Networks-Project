@@ -58,7 +58,7 @@ int main (int argc, char* argv[]){
     int ser_listenfd;
     int myclient_fd = -1;
     struct sockaddr myclient_addr;
-
+    int clients_maxFD;
     /*****************************/
     /*****PROGRAM STARTS HERE*****/
     /*****************************/
@@ -89,7 +89,9 @@ int main (int argc, char* argv[]){
                 maxfd=ser_listenfd;
                 if(clientsList_head!=NULL){//if CLIENTS CONNECTED -- update maxfd and prepare clients FDSets
                     prepare_ClientFDSets(&rfds);
-                    maxfd = get_ClientsMaxfd();//warning prof
+                    clients_maxFD = get_ClientsMaxfd();//warning prof
+                    if(maxfd < clients_maxFD)
+                        maxfd = clients_maxFD;
                 }
                 if(cli_fd!=-1){
                     FD_SET(cli_fd, &rfds);
@@ -101,6 +103,7 @@ int main (int argc, char* argv[]){
 
             case notregwait: FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
             case listwait:   FD_SET(0, &rfds); FD_SET(sockfd, &rfds); maxfd=sockfd; break;
+            case goingout: break;
         }//switch(state)
 
         if (state == notreg && flag_list) //tem que percorrer o notreg (pelo menos) uma vez sem qq input de descritores quando ja tem a lsita de noz
@@ -201,6 +204,9 @@ int main (int argc, char* argv[]){
                     rcv_nodeslist(sockfd, message, &server_addr, &addrlen, message1, token);
                 }//UDP socket
             break;//listwait
+            
+            case goingout:
+                break;
 
         }//switch(state)    
     }//while()
